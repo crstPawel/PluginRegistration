@@ -111,14 +111,12 @@ jobs:
           retention-days: 30
 
       - name: Get OIDC token for NuGet Trusted Publishing
-        # Pobierz krótkotrwały token OIDC (audience = api.nuget.org)
-        # https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing
+        uses: NuGet/login@v1
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
         id: nuget-oidc
-        run: |
-          TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api.nuget.org" | jq -r '.value' || echo "")
-          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+        with:
+          user: crstPawel
+
 
       - name: Publish to NuGet.org
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
@@ -133,8 +131,7 @@ jobs:
 
           dotnet nuget push "${{ env.ARTIFACTS_DIR }}/*.nupkg" \
             --api-key "$NUGET_API_KEY" \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
+            --source https://api.nuget.org/v3/index.json 
 
       - name: Publish summary
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
