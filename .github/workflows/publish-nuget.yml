@@ -2,15 +2,29 @@ name: Publish NuGet Packages
 
 # Publikuje pakiety NuGet (Attributes, Core, Tool) do NuGet Gallery (nuget.org)
 #
-# Jak używać:
-# 1. Ustaw wersję w Directory.Build.props (np. <Version>1.0.4</Version>)
-# 2. Zatwierdź zmianę i utwórz nowy GitHub Release (lub tag vX.Y.Z)
-# 3. Workflow automatycznie zbuduje, spakuje i opublikuje pakiety
+# Używa **Trusted Publishing** (OIDC) — zalecane przez NuGet.org.
+# Nie wymaga przechowywania długoterminowego API keya.
+# Patrz: https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing
 #
-# Wymagany sekret:
-#   NUGET_API_KEY  →  API Key z https://www.nuget.org/account/apikeys (z uprawnieniem "Push")
+# Zachowanie:
+# - Zawsze: build + test + pack + upload artifact (nuget-packages)
+# - Publikacja na nuget.org TYLKO gdy:
+#     • GitHub Release (published), LUB
+#     • Ręczne uruchomienie (workflow_dispatch) z publish=true
 #
-# Zalecane: Używaj triggera "release" lub ręcznego workflow_dispatch.
+# Wymagana konfiguracja po stronie NuGet.org:
+# 1. Zaloguj się na https://www.nuget.org
+# 2. Dla każdego pakietu (lub przez Publishing Policies):
+#    - Przejdź do strony pakietu → "Manage" / "Trusted publishers"
+#    - Dodaj Trusted Publisher: GitHub Actions
+#    - Owner: crstPawel
+#    - Repository: PluginRegistration
+#    - (opcjonalnie) Environment lub konkretny workflow
+# 3. Dla "policies-pending-full-activation" — aktywuj politykę na nuget.org
+#
+# Fallback: jeśli OIDC nie zadziała, możesz nadal użyć sekretu NUGET_API_KEY.
+#
+# Zalecane: Używaj triggera "release" lub ręcznego dispatch.
 
 on:
   release:
@@ -41,6 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write   # Wymagane dla NuGet Trusted Publishing (OIDC)
 
     steps:
       - name: Checkout repository
@@ -95,21 +110,42 @@ jobs:
           path: ${{ env.ARTIFACTS_DIR }}/
           retention-days: 30
 
+      - name: Get OIDC token for NuGet Trusted Publishing
+        # Pobierz krótkotrwały token OIDC (audience = api.nuget.org)
+        # https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing
+        if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
+        id: nuget-oidc
+        run: |
+          TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api.nuget.org" | jq -r '.value' || echo "")
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
       - name: Publish to NuGet.org
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
+        env:
+          # Preferuj OIDC token z Trusted Publishing, fallback na stary sekret
+          NUGET_API_KEY: ${{ steps.nuget-oidc.outputs.token || secrets.NUGET_API_KEY }}
         run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "::warning::No OIDC token and no NUGET_API_KEY secret. Skipping publish to nuget.org."
+            exit 0
+          fi
+
           dotnet nuget push "${{ env.ARTIFACTS_DIR }}/*.nupkg" \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
-        env:
-          # Dodatkowe zmienne (opcjonalne) na wypadek problemów z symbolami
-          NUGET_SOURCE: https://api.nuget.org/v3/index.json
 
       - name: Publish summary
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-oidc.outputs.token || secrets.NUGET_API_KEY }}
         run: |
-          echo "Pakiety NuGet zostały opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "⚠️ Publish skipped (no OIDC token / API key)" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          echo "✅ Pakiety NuGet zostały opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Opublikowane pakiety:" >> $GITHUB_STEP_SUMMARY
-          ls ${{ env.ARTIFACTS_DIR }}/*.nupkg | sed 's|.*/||' | sed 's/^/- \`/' | sed 's/$/\`/' >> $GITHUB_STEP_SUMMARY
+          ls ${{ env.ARTIFACTS_DIR }}/*.nupkg 2>/dev/null | xargs -I {} basename {} | sed 's/^/- \`/' | sed 's/$/\`/' >> $GITHUB_STEP_SUMMARY || echo "- (brak plików)" >> $GITHUB_STEP_SUMMARY
