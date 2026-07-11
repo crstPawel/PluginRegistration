@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PluginRegistration.Core</RootNamespace>
+    <AssemblyName>PluginRegistration.Core</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Description>Core library for Dataverse plugin registration (deploy, sync, early-bound generation, profile support).</Description>
+
+    <!-- Package identity -->
+    <PackageId>PluginRegistration.Core</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+    <PackageProjectUrl>https://github.com/crstPawel/PluginRegistration</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PluginRegistration.Attributes\PluginRegistration.Attributes.csproj" />
+  </ItemGroup>
+
+  <Target Name="CopyDLaBEarlyBoundDictionary" AfterTargets="Build">
+    <ItemGroup>
+      <_DLaBDictionary Include="$(NuGetPackageRoot)dlab.xrm.earlyboundgeneratorv2.api/**/lib/$(TargetFramework)/DLaB.Dictionary.txt" />
+    </ItemGroup>
+    <MakeDir Directories="$(OutputPath)DLaB.EarlyBoundGeneratorV2" />
+    <Copy
+      SourceFiles="@(_DLaBDictionary)"
+      DestinationFolder="$(OutputPath)DLaB.EarlyBoundGeneratorV2\"
+      SkipUnchangedFiles="true"
+      Condition="'@(_DLaBDictionary)' != ''" />
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="DLaB.Xrm.EarlyBoundGeneratorV2.Api" Version="2.2026.6.7" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.9" />
+    <PackageReference Include="Microsoft.PowerPlatform.Dataverse.Client" Version="1.2.26" />
+    <PackageReference Include="Microsoft.PowerPlatform.Dataverse.ModelBuilderLib" Version="2.0.16" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Reflection.MetadataLoadContext" Version="10.0.0" />
+    <PackageReference Include="System.ServiceModel.Http" Version="10.0.652802" />
+    <PackageReference Include="System.ServiceModel.Primitives" Version="10.0.652802" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.9" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.9" />
+  </ItemGroup>
+
+</Project>

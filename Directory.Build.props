@@ -1,0 +1,56 @@
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+
+    <!-- ============================================
+         Package / NuGet publishing configuration
+         ============================================ -->
+    <!-- Bump this before releasing a new version of the packages -->
+    <Version>1.0.3</Version>
+    <Authors>PluginRegistrationTool</Authors>
+    <Company>PluginRegistrationTool</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <!-- TODO: Update these URLs to your actual repository / project page before publishing -->
+    <PackageProjectUrl>https://github.com/crstPawel/PluginRegistration</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/crstPawel/PluginRegistration</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>dataverse;dynamics365;power-platform;plugin;custom-api</PackageTags>
+    <Copyright>Copyright © PluginRegistrationTool</Copyright>
+
+    <!-- High quality packages -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Suppress "Missing XML comment" warnings until we document everything -->
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!-- By default do not create NuGet packages for projects (samples, tests etc.) -->
+  <PropertyGroup>
+    <IsPackable Condition="'$(IsPackable)' == ''">false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Patched transitive packages for .NET 10 projects -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
+    <PackageReference Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.9" />
+    <PackageReference Update="Microsoft.Extensions.Logging" Version="9.0.9" />
+    <PackageReference Update="Microsoft.Extensions.Logging.Abstractions" Version="9.0.9" />
+    <PackageReference Update="Microsoft.Extensions.Options" Version="9.0.9" />
+    <PackageReference Update="Microsoft.Extensions.Primitives" Version="9.0.9" />
+    <PackageReference Update="System.Security.Cryptography.Xml" Version="10.0.9" />
+    <PackageReference Update="System.Security.Cryptography.Pkcs" Version="10.0.9" />
+    <PackageReference Update="System.Text.Json" Version="10.0.9" />
+    <PackageReference Update="System.Formats.Asn1" Version="10.0.9" />
+  </ItemGroup>
+
+  <!-- Patched transitive packages for netstandard2.0 plugin projects -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Update="System.Security.Cryptography.Pkcs" Version="8.0.1" />
+    <PackageReference Update="System.Text.Json" Version="8.0.5" />
+    <PackageReference Update="System.Formats.Asn1" Version="8.0.1" />
+  </ItemGroup>
+</Project>
