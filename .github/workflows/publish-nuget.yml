@@ -115,7 +115,7 @@ jobs:
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
         id: nuget-oidc
         with:
-          user: crstPawel
+          user: psobczak
 
 
       - name: Publish to NuGet.org
