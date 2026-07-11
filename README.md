@@ -254,7 +254,25 @@ Spowoduje to wygenerowanie:
 - `PluginRegistration.Core.1.0.3.nupkg` + `.snupkg`
 - `PluginRegistration.Tool.1.0.3.nupkg` + `.snupkg`
 
-### 3. Wrzucanie (push) do repozytorium
+### 3. Automatyczna publikacja na nuget.org (GitHub Actions + Trusted Publishing)
+
+Repozytorium zawiera workflow `.github/workflows/publish-nuget.yml`, który:
+
+- Buduje, testuje i pakuje wszystkie 3 pakiety
+- Używa **Trusted Publishing** (OIDC) — nie wymaga przechowywania API keya
+- Publikuje tylko przy GitHub Release lub ręcznym uruchomieniu z `publish=true`
+
+**Konfiguracja (jednorazowa):**
+
+1. Na https://www.nuget.org zaloguj się na konto właściciela pakietów.
+2. Dla każdego pakietu dodaj Trusted Publisher:
+   - Owner: `crstPawel`
+   - Repository: `PluginRegistration`
+3. (Opcjonalnie) Skonfiguruj "Publishing Policy" i aktywuj ją (patrz sekcja "policies-pending-full-activation").
+
+Workflow automatycznie pobierze token OIDC i użyje go do publikacji.
+
+### 5. Wrzucanie (push) do repozytorium (ręcznie)
 
 #### Przykład — GitHub Packages
 
@@ -282,7 +300,7 @@ Użyj odpowiedniego `--source` + `--api-key` (lub uwierzytelnienia przez `dotnet
 
 **Wskazówka:** zawsze używaj `--skip-duplicate`, żeby nie psuć pipeline'ów przy ponownym uruchomieniu.
 
-### 4. Konfiguracja feedu w innych projektach
+### 6. Konfiguracja feedu w innych projektach
 
 #### Opcja A — `NuGet.config` w repozytorium pluginów (zalecane)
 
@@ -309,7 +327,7 @@ dotnet tool install --global PluginRegistration.Tool --version 1.0.3 \
   --add-source https://pkgs.dev.azure.com/.../nuget/v3/index.json
 ```
 
-### 5. Korzystanie z pakietów w innych projektach
+### 7. Korzystanie z pakietów w innych projektach
 
 **Atrybuty w projekcie pluginów:**
 
