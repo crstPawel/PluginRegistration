@@ -1,0 +1,137 @@
+# Azure DevOps pipeline template for Dataverse plugin registration.
+#
+# === CREDENTIALS ===
+# The tool supports 3 ways to authenticate using Azure DevOps Service Connections:
+#
+# 1. Client Secret     → AZURE_CLIENT_* variables (classic)
+# 2. Certificate       → AZURE_CLIENT_CERTIFICATE_PATH (from service connection)
+# 3. Access Token (WIF) → DATAVERSE_ACCESS_TOKEN  ← RECOMMENDED (Workload Identity Federation)
+#
+# To use WIF:
+#   export DATAVERSE_ACCESS_TOKEN=$(az account get-access-token --resource "$DATAVERSE_URL" --query accessToken -o tsv)
+#
+# You always need to provide DATAVERSE_URL (usually from a variable group).
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - src/plugins/**
+      - pluginregistration.json
+
+variables:
+  dotnetVersion: '10.0.x'
+  # Update this when you publish a new version of PluginRegistration.Tool to your feed
+  toolVersion: '1.0.3'
+
+stages:
+  - stage: Build
+    displayName: Build plugin assembly
+    jobs:
+      - job: BuildPlugins
+        pool:
+          vmImage: windows-latest
+        steps:
+          - task: UseDotNet@2
+            inputs:
+              packageType: sdk
+              version: $(dotnetVersion)
+
+          - task: DotNetCoreCLI@2
+            displayName: Restore and build plugins
+            inputs:
+              command: build
+              projects: '**/*Plugins*.csproj'
+              arguments: '-c Release'
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish plugin binaries
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)'
+              artifact: plugin-package
+
+  - stage: DeployDev
+    displayName: Deploy to DEV
+    dependsOn: Build
+    variables:
+      - group: dataverse-dev
+    jobs:
+      - deployment: DeployPluginsDev
+        environment: dataverse-dev
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: plugin-package
+
+                - task: UseDotNet@2
+                  inputs:
+                    packageType: sdk
+                    version: $(dotnetVersion)
+
+                - script: |
+                    dotnet tool install --global PluginRegistration.Tool --version $(toolVersion) --add-source $(Build.SourcesDirectory)/nupkg
+                  displayName: Install pluginreg tool
+                  condition: succeededOrFailed()
+
+                # RECOMMENDED: AzureCLI@2 + Service Connection (supports secret, certificate, or WIF)
+                - task: AzureCLI@2
+                  displayName: Register plugins in DEV (via Service Connection)
+                  inputs:
+                    azureSubscription: 'dataverse-dev-spn'   # Azure RM Service Connection (secret / cert / WIF)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/plugin-package
+                      pluginreg whoami
+                      pluginreg deploy --path . --profile dev
+                  env:
+                    DATAVERSE_URL: $(DATAVERSE_URL)
+                    # For classic secret or certificate auth, nothing else is needed.
+                    # For Workload Identity Federation (recommended), add:
+                    #   export DATAVERSE_ACCESS_TOKEN=$(az account get-access-token --resource "$DATAVERSE_URL" --query accessToken -o tsv)
+
+  - stage: DeployProd
+    displayName: Deploy to PROD
+    dependsOn: DeployDev
+    variables:
+      - group: dataverse-prod
+    jobs:
+      - deployment: DeployPluginsProd
+        environment: dataverse-prod
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: plugin-package
+
+                - task: UseDotNet@2
+                  inputs:
+                    packageType: sdk
+                    version: $(dotnetVersion)
+
+                - script: |
+                    dotnet tool install --global PluginRegistration.Tool --version $(toolVersion)
+                  displayName: Install pluginreg tool from NuGet feed
+
+                - task: AzureCLI@2
+                  displayName: Register plugins in PROD (via Service Connection)
+                  inputs:
+                    azureSubscription: 'dataverse-prod-spn'
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/plugin-package
+                      pluginreg deploy --path . --profile prod
+                  env:
+                    DATAVERSE_URL: $(DATAVERSE_URL)
+                    PROD_API_URL: $(PROD_API_URL)
+                    # For WIF: export DATAVERSE_ACCESS_TOKEN=$(az account get-access-token --resource "$DATAVERSE_URL" --query accessToken -o tsv)

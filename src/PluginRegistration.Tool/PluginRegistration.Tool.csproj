@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PluginRegistration.Tool</RootNamespace>
+    <AssemblyName>pluginreg</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- .NET Tool packaging -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>pluginreg</ToolCommandName>
+
+    <Description>CLI tool (pluginreg) for registering Dataverse plugins and Custom APIs based on attributes. Supports profiles, Azure DevOps, and early-bound generation.</Description>
+    <PackageId>PluginRegistration.Tool</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PluginRegistration.Core\PluginRegistration.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+  </ItemGroup>
+
+</Project>

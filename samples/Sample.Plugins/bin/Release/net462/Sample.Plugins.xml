@@ -1,0 +1,1137 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Sample.Plugins</name>
+    </assembly>
+    <members>
+        <member name="T:Sample.Plugins.AccountLifecyclePlugin">
+            <summary>
+            One plugin class can register multiple steps by applying several
+            [CrmPluginRegistration] attributes. Dataverse invokes Execute once per matching step.
+            </summary>
+        </member>
+        <member name="T:Sample.Plugins.EarlyBound.Account">
+            <summary>
+            Minimal early-bound style stub for sample filtering attributes.
+            Replace with generated entities from your Dataverse early-bound project.
+            </summary>
+        </member>
+        <member name="T:Sample.Plugins.MultiCustomApiPlugin">
+            <summary>
+            One plugin class can implement multiple Custom APIs. Each API is declared with its own
+            [CrmPluginRegistration] attribute; request/response metadata is scoped with ApiUniqueName.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.DataverseContext">
+            <summary>
+            Represents a source of entities bound to a Dataverse service. It tracks and manages changes made to the retrieved entities.
+            </summary>
+        </member>
+        <member name="M:DataverseModel.DataverseContext.#ctor(Microsoft.Xrm.Sdk.IOrganizationService)">
+            <summary>
+            Constructor.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.DataverseContext.AccountSet">
+            <summary>
+            Gets a binding to the set of all <see cref="T:DataverseModel.Account"/> entities.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.OptionSetMetadataAttribute">
+            <summary>
+            Attribute to handle storing the OptionSet's Metadata.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.OptionSetMetadataAttribute.Color">
+            <summary>
+            Color of the OptionSetValue.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.OptionSetMetadataAttribute.Description">
+            <summary>
+            Description of the OptionSetValue.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.OptionSetMetadataAttribute.DisplayIndex">
+            <summary>
+            Display order index of the OptionSetValue.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.OptionSetMetadataAttribute.ExternalValue">
+            <summary>
+            External value of the OptionSetValue.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.OptionSetMetadataAttribute.Name">
+            <summary>
+            Name of the OptionSetValue.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.OptionSetMetadataAttribute.Names">
+            <summary>
+            Names of the OptionSetValue.
+            </summary>
+        </member>
+        <member name="M:DataverseModel.OptionSetMetadataAttribute.#ctor(System.String,System.Int32,System.String,System.String,System.String,System.Object[])">
+            <summary>
+            Initializes a new instance of the <see cref="T:DataverseModel.OptionSetMetadataAttribute"/> class.
+            </summary>
+            <param name="name">Name of the value.</param>
+            <param name="displayIndex">Display order index of the value.</param>
+            <param name="color">Color of the value.</param>
+            <param name="description">Description of the value.</param>
+            <param name="externalValue">External value of the value.</param>
+            <param name="names">Names of the value.</param>
+        </member>
+        <member name="T:DataverseModel.OptionSetExtension">
+            <summary>
+            Extension class to handle retrieving of OptionSetMetadataAttribute.
+            </summary>
+        </member>
+        <member name="M:DataverseModel.OptionSetExtension.GetMetadata``1(``0)">
+            <summary>
+            Returns the OptionSetMetadataAttribute for the given enum value
+            </summary>
+            <typeparam name="T">OptionSet Enum Type</typeparam>
+            <param name="value">Enum Value with OptionSetMetadataAttribute</param>
+        </member>
+        <member name="T:DataverseModel.Account_AccountCategoryCode">
+            <summary>
+            Drop-down list for selecting the category of the account.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_AccountClassificationCode">
+            <summary>
+            Drop-down list for classifying an account.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_AccountRatingCode">
+            <summary>
+            Drop-down list for selecting account ratings.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_Address1_AddressTypeCode">
+            <summary>
+            Type of address for address 1, such as billing, shipping, or primary address.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_Address1_FreightTermsCode">
+            <summary>
+            Freight terms for address 1.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_Address1_ShippingMethodCode">
+            <summary>
+            Method of shipment for address 1.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_Address2_AddressTypeCode">
+            <summary>
+            Type of address for address 2, such as billing, shipping, or primary address.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_Address2_FreightTermsCode">
+            <summary>
+            Freight terms for address 2.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_Address2_ShippingMethodCode">
+            <summary>
+            Method of shipment for address 2.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_BusinessTypeCode">
+            <summary>
+            Type of business associated with the account.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_CustomerSizeCode">
+            <summary>
+            Size of the account.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_CustomerTypeCode">
+            <summary>
+            Type of the account.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_IndustryCode">
+            <summary>
+            Type of industry with which the account is associated.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_OwnershipCode">
+            <summary>
+            Type of company ownership, such as public or private.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_PaymentTermsCode">
+            <summary>
+            Payment terms for the account.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_PreferredAppointmentDayCode">
+            <summary>
+            Day of the week that the account prefers for scheduling service activities.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_PreferredAppointmentTimeCode">
+            <summary>
+            Time of day that the account prefers for scheduling service activities.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_PreferredContactMethodCode">
+            <summary>
+            Preferred contact method for the account.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_ShippingMethodCode">
+            <summary>
+            Method of shipment for the account.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.account_statecode">
+            <summary>
+            Status of the account.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_StatusCode">
+            <summary>
+            Reason for the status of the account.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account_TerritoryCode">
+            <summary>
+            Territory to which the account belongs.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account">
+            <summary>
+            Business that represents a customer or potential customer. The company that is billed in business transactions.
+            </summary>
+        </member>
+        <member name="T:DataverseModel.Account.Fields">
+            <summary>
+            Available fields, at the time of codegen, for the account entity
+            </summary>
+        </member>
+        <member name="M:DataverseModel.Account.#ctor">
+            <summary>
+            Default Constructor.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.AccountCategoryCode">
+            <summary>
+            Select a category to indicate whether the customer account is standard or preferred.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.AccountClassificationCode">
+            <summary>
+            Select a classification code to indicate the potential value of the customer account based on the projected return on investment, cooperation level, sales cycle length or other criteria.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.AccountId">
+            <summary>
+            Unique identifier of the client.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.AccountNumber">
+            <summary>
+            Type an ID number or code for the client to quickly search and identify the client in system views.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.AccountRatingCode">
+            <summary>
+            Select a rating to indicate the value of the client.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_AddressId">
+            <summary>
+            Unique identifier for address 1.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_AddressTypeCode">
+            <summary>
+            Select the primary address type.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_City">
+            <summary>
+            Type the city for the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Composite">
+            <summary>
+            Shows the complete primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Country">
+            <summary>
+            Type the country or region for the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_County">
+            <summary>
+            Type the county for the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Fax">
+            <summary>
+            Type the fax number associated with the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_FreightTermsCode">
+            <summary>
+            Select the freight terms for the primary address to make sure shipping orders are processed correctly.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Latitude">
+            <summary>
+            Type the latitude value for the primary address for use in mapping and other applications.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Line1">
+            <summary>
+            Type the first line of the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Line2">
+            <summary>
+            Type the second line of the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Line3">
+            <summary>
+            Type the third line of the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Longitude">
+            <summary>
+            Type the longitude value for the primary address for use in mapping and other applications.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Name">
+            <summary>
+            Type a descriptive name for the primary address, such as Corporate Headquarters.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_PostalCode">
+            <summary>
+            Type the ZIP Code or postal code for the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_PostofficeBox">
+            <summary>
+            Type the post office box number of the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_PrimaryContactName">
+            <summary>
+            Type the name of the main contact at the account's primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_ShippingMethodCode">
+            <summary>
+            Select a shipping method for deliveries sent to this address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_StateOrProvince">
+            <summary>
+            Type the state or province of the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Telephone1">
+            <summary>
+            Type the main phone number associated with the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Telephone2">
+            <summary>
+            Type a second phone number associated with the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_Telephone3">
+            <summary>
+            Type a third phone number associated with the primary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_UpsZone">
+            <summary>
+            Type the UPS zone of the primary address to make sure shipping charges are calculated correctly and deliveries are made promptly, if shipped by UPS.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address1_UtcOffset">
+            <summary>
+            Select the time zone, or UTC offset, for this address so that other people can reference it when they contact someone at this address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_AddressId">
+            <summary>
+            Unique identifier for address 2.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_AddressTypeCode">
+            <summary>
+            Select the secondary address type.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_City">
+            <summary>
+            Type the city for the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Composite">
+            <summary>
+            Shows the complete secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Country">
+            <summary>
+            Type the country or region for the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_County">
+            <summary>
+            Type the county for the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Fax">
+            <summary>
+            Type the fax number associated with the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_FreightTermsCode">
+            <summary>
+            Select the freight terms for the secondary address to make sure shipping orders are processed correctly.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Latitude">
+            <summary>
+            Type the latitude value for the secondary address for use in mapping and other applications.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Line1">
+            <summary>
+            Type the first line of the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Line2">
+            <summary>
+            Type the second line of the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Line3">
+            <summary>
+            Type the third line of the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Longitude">
+            <summary>
+            Type the longitude value for the secondary address for use in mapping and other applications.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Name">
+            <summary>
+            Type a descriptive name for the secondary address, such as Corporate Headquarters.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_PostalCode">
+            <summary>
+            Type the ZIP Code or postal code for the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_PostofficeBox">
+            <summary>
+            Type the post office box number of the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_PrimaryContactName">
+            <summary>
+            Type the name of the main contact at the account's secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_ShippingMethodCode">
+            <summary>
+            Select a shipping method for deliveries sent to this address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_StateOrProvince">
+            <summary>
+            Type the state or province of the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Telephone1">
+            <summary>
+            Type the main phone number associated with the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Telephone2">
+            <summary>
+            Type a second phone number associated with the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_Telephone3">
+            <summary>
+            Type a third phone number associated with the secondary address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_UpsZone">
+            <summary>
+            Type the UPS zone of the secondary address to make sure shipping charges are calculated correctly and deliveries are made promptly, if shipped by UPS.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Address2_UtcOffset">
+            <summary>
+            Select the time zone, or UTC offset, for this address so that other people can reference it when they contact someone at this address.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Aging30">
+            <summary>
+            For system use only.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Aging30_Base">
+            <summary>
+            The base currency equivalent of the aging 30 field.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Aging60">
+            <summary>
+            For system use only.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Aging60_Base">
+            <summary>
+            The base currency equivalent of the aging 60 field.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Aging90">
+            <summary>
+            For system use only.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Aging90_Base">
+            <summary>
+            The base currency equivalent of the aging 90 field.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.AVa_ClientShortName">
+            <summary>
+            Short name for client to use in naming convention for shift orders and shifts.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.AVa_CreditAmount_Base">
+            <summary>
+            Value of the Credit Amount in base currency.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.AVa_Imported">
+            <summary>
+            Flag to mark if client was created via import.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.BusinessTypeCode">
+            <summary>
+            Select the legal designation or other business type of the account for contracts or reporting purposes.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.CreatedBy">
+            <summary>
+            Shows who created the record.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.CreatedByExternalParty">
+            <summary>
+            Shows the external party who created the record.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.CreatedOn">
+            <summary>
+            Shows the date and time when the record was created. The date and time are displayed in the time zone selected in Microsoft Dynamics 365 options.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.CreatedOnBehalfBy">
+            <summary>
+            Shows who created the record on behalf of another user.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.CreditLimit">
+            <summary>
+            Type the credit limit of the account. This is a useful reference when you address invoice and accounting issues with the customer.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.CreditLimit_Base">
+            <summary>
+            Shows the credit limit converted to the system's default base currency for reporting purposes.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.CreditOnHold">
+            <summary>
+            Select whether the credit for the account is on hold. This is a useful reference while addressing the invoice and accounting issues with the customer.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.CustomerSizeCode">
+            <summary>
+            Select the size category or range of the account for segmentation and reporting purposes.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.CustomerTypeCode">
+            <summary>
+            Select the category that best describes the relationship between the account and your organization.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.DefaultPriceLevelId">
+            <summary>
+            Choose the default price list associated with the account to make sure the correct product prices for this customer are applied in sales opportunities, quotes, and orders.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Description">
+            <summary>
+            Type additional information to describe the account, such as an excerpt from the company's website.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.DoNotBulkEmail">
+            <summary>
+            Select whether the account allows bulk email sent through campaigns. If Do Not Allow is selected, the account can be added to marketing lists, but is excluded from email.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.DoNotBulkPostalMail">
+            <summary>
+            Select whether the account allows bulk postal mail sent through marketing campaigns or quick campaigns. If Do Not Allow is selected, the account can be added to marketing lists, but will be excluded from the postal mail.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.DoNotEmail">
+            <summary>
+            Select whether the account allows direct email sent from Microsoft Dynamics 365.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.DoNotFax">
+            <summary>
+            Select whether the account allows faxes. If Do Not Allow is selected, the account will be excluded from fax activities distributed in marketing campaigns.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.DoNotPhone">
+            <summary>
+            Select whether the account allows phone calls. If Do Not Allow is selected, the account will be excluded from phone call activities distributed in marketing campaigns.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.DoNotPostalMail">
+            <summary>
+            Select whether the account allows direct mail. If Do Not Allow is selected, the account will be excluded from letter activities distributed in marketing campaigns.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.DoNotSendMm">
+            <summary>
+            Select whether the account accepts marketing materials, such as brochures or catalogs.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.EmailAddress1">
+            <summary>
+            Type the primary email address for the account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.EmailAddress2">
+            <summary>
+            Type the secondary email address for the account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.EmailAddress3">
+            <summary>
+            Type an alternate email address for the account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.EntityImage">
+            <summary>
+            Shows the default image for the record.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.EntityImageId">
+            <summary>
+            For internal use only.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ExchangeRate">
+            <summary>
+            Shows the conversion rate of the record's currency. The exchange rate is used to convert all money fields in the record from the local currency to the system's default currency.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Fax">
+            <summary>
+            Type the fax number for the account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.FollowEmail">
+            <summary>
+            Information about whether to allow following email activity like opens, attachment views and link clicks for emails sent to the account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.FtpSiteUrl">
+            <summary>
+            Type the URL for the account's FTP site to enable users to access data and share documents.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ImportSequenceNumber">
+            <summary>
+            Unique identifier of the data import or data migration that created this record.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.IndustryCode">
+            <summary>
+            Select the account's primary industry for use in marketing segmentation and demographic analysis.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.LastOnHoldTime">
+            <summary>
+            Contains the date and time stamp of the last on hold time.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.LastUsedInCampaign">
+            <summary>
+            Shows the date when the account was last included in a marketing campaign or quick campaign.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.MarketCap">
+            <summary>
+            Type the market capitalization of the account to identify the company's equity, used as an indicator in financial performance analysis.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.MarketCap_Base">
+            <summary>
+            Shows the market capitalization converted to the system's default base currency.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.MarketingOnly">
+            <summary>
+            Whether is only for marketing
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.MasterId">
+            <summary>
+            Shows the master account that the account was merged with.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Merged">
+            <summary>
+            Shows whether the account has been merged with another account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ModifiedBy">
+            <summary>
+            Shows who last updated the record.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ModifiedByExternalParty">
+            <summary>
+            Shows the external party who modified the record.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ModifiedOn">
+            <summary>
+            Shows the date and time when the record was last updated. The date and time are displayed in the time zone selected in Microsoft Dynamics 365 options.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ModifiedOnBehalfBy">
+            <summary>
+            Shows who created the record on behalf of another user.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.MSa_ManagingPartnerId">
+            <summary>
+            Unique identifier for Account associated with Account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Msdyn_GdPrOptOut">
+            <summary>
+            Describes whether account is opted out or not
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Msdyn_PrimaryTimeZone">
+            <summary>
+            Indicates the primary time zone that the client works on.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Msdyn_SalesAccelerationInsightId">
+            <summary>
+            Sales Acceleration Insights ID
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Msdyn_SegmentId">
+            <summary>
+            Unique identifier for Segment associated with account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Name">
+            <summary>
+            Type the company or business name.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.NumberOfEmployees">
+            <summary>
+            Type the number of employees that work at the account for use in marketing segmentation and demographic analysis.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OnHoldTime">
+            <summary>
+            Shows how long, in minutes, that the record was on hold.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OpenDeals">
+            <summary>
+            Number of open opportunities against an account and its child accounts.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OpenDeals_Date">
+            <summary>
+            Last Updated time of rollup field Open Deals.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OpenDeals_State">
+            <summary>
+            State of rollup field Open Deals.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OpenRevenue">
+            <summary>
+            Sum of open revenue against an account and its child accounts.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OpenRevenue_Base">
+            <summary>
+            Value of the Open Revenue in base currency.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OpenRevenue_Date">
+            <summary>
+            Last Updated time of rollup field Open Revenue.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OpenRevenue_State">
+            <summary>
+            State of rollup field Open Revenue.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OriginatingLeadId">
+            <summary>
+            Shows the lead that the account was created from if the account was created by converting a lead in Microsoft Dynamics 365. This is used to relate the account to data on the originating lead for use in reporting and analytics.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OverriddenCreatedOn">
+            <summary>
+            Date and time that the record was migrated.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OwnerId">
+            <summary>
+            Enter the user or team who is assigned to manage the record. This field is updated every time the record is assigned to a different user.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OwnershipCode">
+            <summary>
+            Select the account's ownership structure, such as public or private.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OwningBusinessUnit">
+            <summary>
+            Shows the business unit that the record owner belongs to.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OwningTeam">
+            <summary>
+            Unique identifier of the team who owns the account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.OwningUser">
+            <summary>
+            Unique identifier of the user who owns the account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ParentAccountId">
+            <summary>
+            Choose the parent client associated with this client to show parent and child businesses in reporting and analytics.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ParticipatesInWorkflow">
+            <summary>
+            For system use only. Legacy Microsoft Dynamics CRM 3.0 workflow data.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.PaymentTermsCode">
+            <summary>
+            Select the payment terms to indicate when the customer needs to pay the total amount.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.PreferredAppointmentDayCode">
+            <summary>
+            Select the preferred day of the week for service appointments.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.PreferredAppointmentTimeCode">
+            <summary>
+            Select the preferred time of day for service appointments.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.PreferredContactMethodCode">
+            <summary>
+            Select the preferred method of contact.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.PreferredEquipmentId">
+            <summary>
+            Choose the account's preferred service facility or equipment to make sure services are scheduled correctly for the customer.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.PreferredServiceId">
+            <summary>
+            Choose the account's preferred service for reference when you schedule service activities.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.PreferredSystemUserId">
+            <summary>
+            Choose the preferred service representative for reference when you schedule service activities for the account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.PrimaryContactId">
+            <summary>
+            Choose the primary contact for the account to provide quick access to contact details.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.PrimarySatoriId">
+            <summary>
+            Primary Satori ID for Account
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.PrimaryTwitterId">
+            <summary>
+            Primary Twitter ID for Account
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ProcessId">
+            <summary>
+            Shows the ID of the process.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Revenue">
+            <summary>
+            Type the annual revenue for the account, used as an indicator in financial performance analysis.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Revenue_Base">
+            <summary>
+            Shows the annual revenue converted to the system's default base currency. The calculations use the exchange rate specified in the Currencies area.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.SH_Network">
+            <summary>
+            #8242
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.SH_TaxId">
+            <summary>
+            #8242
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.SharesOutstanding">
+            <summary>
+            Type the number of shares available to the public for the account. This number is used as an indicator in financial performance analysis.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ShippingMethodCode">
+            <summary>
+            Select a shipping method for deliveries sent to the account's address to designate the preferred carrier or other delivery option.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Sic">
+            <summary>
+            Type the Standard Industrial Classification (SIC) code that indicates the account's primary industry of business, for use in marketing segmentation and demographic analysis.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.SlaId">
+            <summary>
+            Choose the service level agreement (SLA) that you want to apply to the Account record.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.SlaInvokedId">
+            <summary>
+            Last SLA that was applied to this case. This field is for internal use only.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.StageId">
+            <summary>
+            Shows the ID of the stage.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.StateCode">
+            <summary>
+            Shows whether the account is active or inactive. Inactive accounts are read-only and can't be edited unless they are reactivated.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.StatusCode">
+            <summary>
+            Select the account's status.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.StockExchange">
+            <summary>
+            Type the stock exchange at which the account is listed to track their stock and financial performance of the company.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.TeamsFollowed">
+            <summary>
+            Number of users or conversations followed the record
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Telephone1">
+            <summary>
+            Type the main phone number for this Client
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Telephone2">
+            <summary>
+            Type a second phone number for this account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.Telephone3">
+            <summary>
+            Type a third phone number for this account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.TerritoryCode">
+            <summary>
+            Select a region or territory for the account for use in segmentation and analysis.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.TerritoryId">
+            <summary>
+            Choose the sales region or territory for the account to make sure the account is assigned to the correct representative and for use in segmentation and analysis.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.TickerSymbol">
+            <summary>
+            Type the stock exchange symbol for the account to track financial performance of the company. You can click the code entered in this field to access the latest trading information from MSN Money.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.TimeSpentByMeOnEmailAndMeetings">
+            <summary>
+            Total time spent for emails (read and write) and meetings by me in relation to account record.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.TimeZoneRuleVersionNumber">
+            <summary>
+            For internal use only.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.TransactionCurrencyId">
+            <summary>
+            Choose the local currency for the record to make sure budgets are reported in the correct currency.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.TraversedPath">
+            <summary>
+            For internal use only.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.UtcConversionTimeZoneCode">
+            <summary>
+            Time zone code that was in use when the record was created.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.VersionNumber">
+            <summary>
+            Version number of the account.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.WebsiteUrl">
+            <summary>
+            Type the account's website URL to get quick details about the company profile.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.YomiName">
+            <summary>
+            Type the phonetic spelling of the company name, if specified in Japanese, to make sure the name is pronounced correctly in phone calls and other communications.
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ReferencedAccount_Master_Account">
+            <summary>
+            1:N account_master_account
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ReferencedAccount_Parent_Account">
+            <summary>
+            1:N account_parent_account
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ReferencedAVa_Account_Clients_Account">
+            <summary>
+            1:N ava_account_Clients_account
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ReferencedMSa_Account_ManagingPartner">
+            <summary>
+            1:N msa_account_managingpartner
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ReferencingAccount_Master_Account">
+            <summary>
+            N:1 account_master_account
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ReferencingAccount_Parent_Account">
+            <summary>
+            N:1 account_parent_account
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ReferencingAVa_Account_Clients_Account">
+            <summary>
+            N:1 ava_account_Clients_account
+            </summary>
+        </member>
+        <member name="P:DataverseModel.Account.ReferencingMsA_Account_ManagingPartner">
+            <summary>
+            N:1 msa_account_managingpartner
+            </summary>
+        </member>
+        <member name="M:DataverseModel.Account.#ctor(System.Object)">
+            <summary>
+            Constructor for populating via LINQ queries given a LINQ anonymous type
+            <param name="anonymousType">LINQ anonymous type.</param>
+            </summary>
+        </member>
+        <member name="M:DataverseModel.EntityOptionSetEnum.GetEnum(Microsoft.Xrm.Sdk.Entity,System.String)">
+            <summary>
+            Returns the integer version of an OptionSetValue
+            </summary>
+        </member>
+        <member name="M:DataverseModel.EntityOptionSetEnum.GetMultiEnum``1(Microsoft.Xrm.Sdk.Entity,System.String)">
+            <summary>
+            Returns a collection of integer version's of an Multi-Select OptionSetValue for a given attribute on the passed entity
+            </summary>
+        </member>
+        <member name="M:DataverseModel.EntityOptionSetEnum.GetMultiEnum``1(Microsoft.Xrm.Sdk.Entity,System.String,System.Collections.Generic.IEnumerable{``0})">
+            <summary>
+            Returns a OptionSetValueCollection based on a list of Multi-Select OptionSetValues
+            </summary>
+        </member>
+        <member name="T:DataverseModel.ava_Positionchoice">
+             <summary>
+             CMAide/CMTech - Certified Medication Aide/Technician
+            Care Giver - Care Giver
+            CNA  - Certified Nursing Assistant
+            LPN - Licensed Practical Nurse
+            QMAP - Qualified Medication Administration Personnel
+            RNA  - Restorative Nursing Assistant
+            RN - Registered Nurse
+            STNA - State Tested Nurse Aide
+            TMA - Transitional Medical Assistance
+            DH - Dental Hygienist
+            DA - Dental Assistant
+            DNC - Dental Non-Clinical
+            MA - Medical Assistant
+             </summary>
+        </member>
+        <member name="F:DataverseModel.ava_Positionchoice.CmaCmt">
+            <summary>
+            Certified Medication Aide/Technician
+            </summary>
+        </member>
+    </members>
+</doc>

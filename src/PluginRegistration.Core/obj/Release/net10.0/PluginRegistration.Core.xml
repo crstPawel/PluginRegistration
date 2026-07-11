@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>PluginRegistration.Core</name>
+    </assembly>
+    <members>
+        <member name="P:PluginRegistration.Core.Config.PluginRegistrationConfig.Profiles">
+            <summary>
+            Per-environment overrides keyed by profile name (dev, test, prod).
+            </summary>
+        </member>
+        <member name="P:PluginRegistration.Core.Config.ProfileSettings.StepOverrides">
+            <summary>
+            Step overrides keyed by step name or step Id (GUID).
+            </summary>
+        </member>
+        <member name="P:PluginRegistration.Core.Config.ProfileSettings.CustomApis">
+            <summary>
+            Custom API definitions for this environment.
+            </summary>
+        </member>
+        <member name="M:PluginRegistration.Core.Connection.DataverseConnectionFactory.BuildConnectionStringFromEnvironment">
+            <summary>
+            Builds a connection string from environment variables.
+            Supports both classic secrets and certificates.
+            Also supports Azure DevOps Service Connection variables (AZURE_*).
+            </summary>
+        </member>
+        <member name="T:PluginRegistration.Core.EarlyBound.EarlyBoundGeneratorService">
+            <summary>
+            Generates early-bound Dataverse types using DLaB Early Bound Generator V2 (PAC ModelBuilder).
+            </summary>
+        </member>
+        <member name="T:PluginRegistration.Core.EarlyBound.FlexibleStringListJsonConverter">
+            <summary>
+            Accepts JSON string ("account"), pipe-separated string ("account|contact"), or string array.
+            </summary>
+        </member>
+        <member name="T:PluginRegistration.Core.Registration.CustomApiRegistrationService">
+            <summary>
+            Creates and maintains Custom API definitions, request parameters, response properties,
+            and plugin type bindings based on code attributes.
+            </summary>
+        </member>
+        <member name="M:PluginRegistration.Core.Sync.CodeParser.#ctor(System.String,System.String)">
+            <summary>
+            Legacy constructor using regex-only detection (supports --class-regex override).
+            </summary>
+        </member>
+        <member name="T:PluginRegistration.Core.Sync.MetadataSyncService">
+            <summary>
+            Downloads plugin step metadata from Dataverse and writes CrmPluginRegistration attributes into source code.
+            </summary>
+        </member>
+        <member name="T:PluginRegistration.Core.Sync.SourceCodeTypeIndex">
+            <summary>
+            Indexes class inheritance across all source files to detect plugins inheriting from custom base classes.
+            </summary>
+        </member>
+    </members>
+</doc>

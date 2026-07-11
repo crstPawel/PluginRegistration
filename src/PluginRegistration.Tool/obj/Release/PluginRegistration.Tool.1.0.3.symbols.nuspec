@@ -1,0 +1,24 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+  <metadata>
+    <id>PluginRegistration.Tool</id>
+    <version>1.0.3</version>
+    <authors>PluginRegistrationTool</authors>
+    <license type="expression">MIT</license>
+    <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
+    <readme>README.md</readme>
+    <projectUrl>https://github.com/YOUR_ORG/PluginRegistrationTool</projectUrl>
+    <description>CLI tool (pluginreg) for registering Dataverse plugins and Custom APIs based on attributes. Supports profiles, Azure DevOps, and early-bound generation.</description>
+    <copyright>Copyright © PluginRegistrationTool</copyright>
+    <tags>dataverse dynamics365 power-platform plugin custom-api</tags>
+    <packageTypes>
+      <packageType name="DotnetTool" />
+    </packageTypes>
+    <repository type="git" url="https://github.com/YOUR_ORG/PluginRegistrationTool" />
+  </metadata>
+  <files>
+    <file src="/home/psobczak/RiderProjects/PluginRegistrationTool/src/PluginRegistration.Tool/bin/Release/net10.0/publish/pluginreg.pdb" target="tools/net10.0/any/pluginreg.pdb" />
+    <file src="/home/psobczak/RiderProjects/PluginRegistrationTool/src/PluginRegistration.Tool/bin/Release/net10.0/publish/PluginRegistration.Attributes.pdb" target="tools/net10.0/any/PluginRegistration.Attributes.pdb" />
+    <file src="/home/psobczak/RiderProjects/PluginRegistrationTool/src/PluginRegistration.Tool/bin/Release/net10.0/publish/PluginRegistration.Core.pdb" target="tools/net10.0/any/PluginRegistration.Core.pdb" />
+  </files>
+</package>

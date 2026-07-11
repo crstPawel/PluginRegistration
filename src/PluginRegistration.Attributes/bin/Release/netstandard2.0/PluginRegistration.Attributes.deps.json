@@ -1,0 +1,24 @@
+{
+  "runtimeTarget": {
+    "name": ".NETStandard,Version=v2.0/",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETStandard,Version=v2.0": {},
+    ".NETStandard,Version=v2.0/": {
+      "PluginRegistration.Attributes/1.0.3": {
+        "runtime": {
+          "PluginRegistration.Attributes.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "PluginRegistration.Attributes/1.0.3": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
