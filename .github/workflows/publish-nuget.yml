@@ -1,0 +1,115 @@
+name: Publish NuGet Packages
+
+# Publikuje pakiety NuGet (Attributes, Core, Tool) do NuGet Gallery (nuget.org)
+#
+# Jak używać:
+# 1. Ustaw wersję w Directory.Build.props (np. <Version>1.0.4</Version>)
+# 2. Zatwierdź zmianę i utwórz nowy GitHub Release (lub tag vX.Y.Z)
+# 3. Workflow automatycznie zbuduje, spakuje i opublikuje pakiety
+#
+# Wymagany sekret:
+#   NUGET_API_KEY  →  API Key z https://www.nuget.org/account/apikeys (z uprawnieniem "Push")
+#
+# Zalecane: Używaj triggera "release" lub ręcznego workflow_dispatch.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Opcjonalna wersja (nadpisuje wersję z Directory.Build.props). Zostaw puste, aby użyć wersji z props.'
+        required: false
+        type: string
+      publish:
+        description: 'Opublikuj pakiety na nuget.org'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  ARTIFACTS_DIR: ./artifacts
+
+jobs:
+  build-and-publish:
+    name: Build & Publish NuGet
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (Release)
+        run: dotnet build --no-restore -c Release
+
+      - name: Run tests
+        run: dotnet test --no-build -c Release --logger "console;verbosity=minimal"
+
+      - name: Determine package version
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            echo "Version override from input: ${{ github.event.inputs.version }}"
+          else
+            # Odczytaj wersję z Directory.Build.props
+            VER=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -1 || true)
+            echo "version=$VER" >> $GITHUB_OUTPUT
+            echo "Version from Directory.Build.props: $VER"
+          fi
+
+      - name: Pack NuGet packages
+        run: |
+          PACK_VERSION="${{ steps.version.outputs.version }}"
+          if [ -n "$PACK_VERSION" ]; then
+            dotnet pack --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:Version="$PACK_VERSION" /p:ContinuousIntegrationBuild=true
+          else
+            dotnet pack --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:ContinuousIntegrationBuild=true
+          fi
+
+      - name: List generated packages
+        run: ls -la ${{ env.ARTIFACTS_DIR }}/
+
+      - name: Upload packages as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ${{ env.ARTIFACTS_DIR }}/
+          retention-days: 30
+
+      - name: Publish to NuGet.org
+        if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
+        run: |
+          dotnet nuget push "${{ env.ARTIFACTS_DIR }}/*.nupkg" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+        env:
+          # Dodatkowe zmienne (opcjonalne) na wypadek problemów z symbolami
+          NUGET_SOURCE: https://api.nuget.org/v3/index.json
+
+      - name: Publish summary
+        if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
+        run: |
+          echo "Pakiety NuGet zostały opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Opublikowane pakiety:" >> $GITHUB_STEP_SUMMARY
+          ls ${{ env.ARTIFACTS_DIR }}/*.nupkg | sed 's|.*/||' | sed 's/^/- \`/' | sed 's/$/\`/' >> $GITHUB_STEP_SUMMARY

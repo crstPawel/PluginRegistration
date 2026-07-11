@@ -10,8 +10,6 @@
     <PackageId>PluginRegistration.Attributes</PackageId>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsPackable>true</IsPackable>
-    <Version>0.1.1</Version>
-    <RepositoryUrl />
     <PackageProjectUrl>https://github.com/crstPawel/PluginRegistration</PackageProjectUrl>
   </PropertyGroup>
 
