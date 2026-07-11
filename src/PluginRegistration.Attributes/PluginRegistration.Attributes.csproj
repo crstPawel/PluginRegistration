@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFramework>net462</TargetFramework>
     <RootNamespace>PluginRegistration.Attributes</RootNamespace>
     <AssemblyName>PluginRegistration.Attributes</AssemblyName>
     <Description>Dataverse / Dynamics 365 plugin registration attributes for use with [CrmPluginRegistration], Custom API, and step images.</Description>
@@ -10,6 +10,9 @@
     <PackageId>PluginRegistration.Attributes</PackageId>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsPackable>true</IsPackable>
+    <Version>0.1.1</Version>
+    <RepositoryUrl />
+    <PackageProjectUrl>https://github.com/crstPawel/PluginRegistration</PackageProjectUrl>
   </PropertyGroup>
 
   <ItemGroup>
