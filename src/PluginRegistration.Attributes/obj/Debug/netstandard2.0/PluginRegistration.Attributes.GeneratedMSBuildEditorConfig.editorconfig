@@ -1,8 +1,0 @@
-is_global = true
-build_property.RootNamespace = PluginRegistration.Attributes
-build_property.ProjectDir = /home/psobczak/RiderProjects/PluginRegistrationTool/src/PluginRegistration.Attributes/
-build_property.EnableComHosting = 
-build_property.EnableGeneratedComInterfaceComImportInterop = 
-build_property.CsWinRTUseWindowsUIXamlProjections = false
-build_property.EffectiveAnalysisLevelStyle = 
-build_property.EnableCodeStyleSeverity = 
