@@ -9,7 +9,7 @@ namespace PluginRegistration.Core.Config;
 public sealed class ConfigScaffoldService
 {
     private static readonly Regex AttributeRegex = new(
-        @"\[CrmPluginRegistration\(([\s\S]+?)\)\]",
+        @"\[PluginRegistration\(([\s\S]+?)\)\]|\[CrmPluginRegistration\(([\s\S]+?)\)\]",
         RegexOptions.Compiled);
 
     private static readonly Regex ClassDeclarationRegex = new(
@@ -158,7 +158,11 @@ public sealed class ConfigScaffoldService
                     ? className
                     : $"{namespaceName}.{className}";
 
-                var attributeBody = match.Groups[1].Value;
+                // Support both new [PluginRegistration] and legacy [CrmPluginRegistration]
+                var attributeBody = !string.IsNullOrEmpty(match.Groups[1].Value)
+                    ? match.Groups[1].Value
+                    : match.Groups[2].Value;
+
                 var stageMatch = StageRegex.Match(attributeBody);
                 if (stageMatch.Success)
                 {

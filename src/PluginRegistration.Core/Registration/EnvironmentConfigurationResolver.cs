@@ -26,7 +26,7 @@ public sealed class EnvironmentConfigurationResolver
             string.Equals(definition.UniqueName, uniqueName, StringComparison.OrdinalIgnoreCase));
     }
 
-    public CrmPluginRegistrationAttribute ApplyProfileOverrides(CrmPluginRegistrationAttribute attribute)
+    public PluginRegistrationAttribute ApplyProfileOverrides(PluginRegistrationAttribute attribute)
     {
         if (_profileSettings is null || attribute.Name is null)
         {
@@ -68,7 +68,7 @@ public sealed class EnvironmentConfigurationResolver
         return attribute;
     }
 
-    private static CrmPluginRegistrationAttribute ApplyEnvironmentVariables(CrmPluginRegistrationAttribute attribute)
+    private static PluginRegistrationAttribute ApplyEnvironmentVariables(PluginRegistrationAttribute attribute)
     {
         if (attribute.UnSecureConfiguration is not null)
         {

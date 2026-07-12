@@ -6,7 +6,7 @@ namespace PluginRegistration.Core.Sync;
 public static class AttributeCodeGenerator
 {
     public static string Generate(
-        CrmPluginRegistrationAttribute attribute,
+        PluginRegistrationAttribute attribute,
         string indentation = "    ",
         string? pluginTypeName = null)
     {
@@ -17,22 +17,26 @@ public static class AttributeCodeGenerator
 
         if (AttributeParser.IsCustomApiRegistration(attribute))
         {
-            return $"{indentation}[CrmPluginRegistration(\"{attribute.Message}\")]";
+            return $"{indentation}[PluginRegistration(\"{attribute.Message}\")]";
         }
 
         return GenerateWorkflowActivity(attribute, indentation);
     }
 
     private static string GeneratePluginStep(
-        CrmPluginRegistrationAttribute attribute,
+        PluginRegistrationAttribute attribute,
         string indentation,
         string? pluginTypeName)
     {
         var extras = BuildNamedParameters(attribute, indentation, includeDescription: true, pluginTypeName);
 
+        // Prefer MessageTypeEnum when the message is one of the common types
+        string messagePart = TryFormatAsMessageTypeEnum(attribute.Message)
+            ?? $"\"{attribute.Message}\"";
+
         return string.Format(
-            "{8}[CrmPluginRegistration(\"{0}\", {8}\"{1}\", StageEnum.{2}, ExecutionModeEnum.{3},{8}{4}, {5}{6}{8})]",
-            attribute.Message,
+            "{8}[PluginRegistration({8}{0}, {8}\"{1}\", StageEnum.{2}, ExecutionModeEnum.{3},{8}{4}, {5}{6}{8})]",
+            messagePart,
             attribute.EntityLogicalName,
             attribute.Stage,
             attribute.ExecutionMode,
@@ -40,6 +44,23 @@ public static class AttributeCodeGenerator
             attribute.ExecutionOrder,
             extras,
             indentation);
+    }
+
+    private static string? TryFormatAsMessageTypeEnum(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return null;
+
+        // Common messages that have a corresponding value in MessageTypeEnum
+        return message switch
+        {
+            "Create" => "MessageTypeEnum.Create",
+            "Update" => "MessageTypeEnum.Update",
+            "Delete" => "MessageTypeEnum.Delete",
+            "Retrieve" => "MessageTypeEnum.Retrieve",
+            "RetrieveMultiple" => "MessageTypeEnum.RetrieveMultiple",
+            _ => null
+        };
     }
 
     private static string FormatFilteringAttributesForCode(string? filteringAttributes)
@@ -65,11 +86,11 @@ public static class AttributeCodeGenerator
         return $"new[] {{ {string.Join(", ", parts.Select(part => $"\"{part}\""))} }}";
     }
 
-    private static string GenerateWorkflowActivity(CrmPluginRegistrationAttribute attribute, string indentation)
+    private static string GenerateWorkflowActivity(PluginRegistrationAttribute attribute, string indentation)
     {
         var extras = BuildNamedParameters(attribute, indentation, includeDescription: false);
         return string.Format(
-            "{6}[CrmPluginRegistration({6}\"{0}\", \"{1}\",\"{2}\",\"{3}\",IsolationModeEnum.{4}{5}{6})]",
+            "{6}[PluginRegistration({6}\"{0}\", \"{1}\",\"{2}\",\"{3}\",IsolationModeEnum.{4}{5}{6})]",
             attribute.Name,
             attribute.FriendlyName,
             attribute.Description,
@@ -80,7 +101,7 @@ public static class AttributeCodeGenerator
     }
 
     private static string BuildNamedParameters(
-        CrmPluginRegistrationAttribute attribute,
+        PluginRegistrationAttribute attribute,
         string indentation,
         bool includeDescription,
         string? pluginTypeName = null)

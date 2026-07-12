@@ -97,7 +97,7 @@ jobs:
       - name: Publish to NuGet.org
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
         env:
-          # OIDC token z Trusted Publishing (polityka musi być pod 'psobczak')
+          # OIDC token z Trusted Publishing (musi pasować do polityki 'psobczak')
           NUGET_API_KEY: ${{ steps.nuget-oidc.outputs.token || secrets.NUGET_API_KEY }}
         run: |
           if [ -z "$NUGET_API_KEY" ]; then
@@ -105,6 +105,7 @@ jobs:
             exit 0
           fi
 
+          echo "Pushing packages using OIDC token..."
           dotnet nuget push "${{ env.ARTIFACTS_DIR }}/*.nupkg" \
             --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \

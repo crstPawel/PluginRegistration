@@ -86,7 +86,7 @@ public static class ReflectionHelper
     public static IEnumerable<CustomAttributeData> GetRegistrationAttributes(Type type)
     {
         var attributes = type.GetCustomAttributesData()
-            .Where(a => a.AttributeType.Name == "CrmPluginRegistrationAttribute")
+            .Where(a => a.AttributeType.Name == "PluginRegistrationAttribute")
             .ToList();
 
         var duplicateNames = attributes

@@ -13,13 +13,13 @@
 
     <Description>CLI tool (pluginreg) for registering Dataverse plugins and Custom APIs based on attributes. Supports profiles, Azure DevOps, and early-bound generation.</Description>
     <PackageId>PluginRegistration.Tool</PackageId>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReadmeFile>README.NuGet.md</PackageReadmeFile>
     <IsPackable>true</IsPackable>
     <PackageProjectUrl>https://github.com/crstPawel/PluginRegistration</PackageProjectUrl>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\..\README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="..\..\README.NuGet.md" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

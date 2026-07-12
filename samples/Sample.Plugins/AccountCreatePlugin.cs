@@ -5,10 +5,10 @@ using DataverseModel;
 
 namespace Sample.Plugins
 {
-    [CrmPluginRegistration(
-        "Create",
+    [PluginRegistration(
+        MessageTypeEnum.Create,
         Account.EntityLogicalName,
-        StageEnum.PreOperation,
+        StageEnum.PostOperation,
         ExecutionModeEnum.Synchronous,
         [Account.Fields.Name],
         1)]
@@ -20,12 +20,12 @@ namespace Sample.Plugins
         }
     }
 
-    [CrmPluginRegistration(
+    [CustomApiRegistration(
         "sample_ProcessAccount",
         FriendlyName = "Process Account",
         Description = "Sample Custom API that processes an account identifier")]
-    [CrmCustomApiRequestParameter("AccountId", CustomApiParameterTypeEnum.String, IsRequired = true, Description = "Account identifier")]
-    [CrmCustomApiResponseProperty("Success", CustomApiParameterTypeEnum.Boolean, Description = "Whether processing succeeded")]
+    [CustomApiRequestParameter("AccountId", CustomApiParameterTypeEnum.String, IsRequired = true, Description = "Account identifier")]
+    [CustomApiResponseProperty("Success", CustomApiParameterTypeEnum.Boolean, Description = "Whether processing succeeded")]
     public sealed class ProcessAccountCustomApiPlugin : IPlugin
     {
         public void Execute(IServiceProvider serviceProvider)

@@ -7,7 +7,7 @@ public static class PluginStepImageReader
 {
     public static IReadOnlyList<PluginStepImageModel> GetImages(
         Type pluginType,
-        CrmPluginRegistrationAttribute step)
+        PluginRegistrationAttribute step)
     {
         if (step.Stage is null)
         {
@@ -15,7 +15,7 @@ public static class PluginStepImageReader
         }
 
         return pluginType.GetCustomAttributesData()
-            .Where(data => data.AttributeType.Name == nameof(CrmPluginStepImageAttribute))
+            .Where(data => data.AttributeType.Name == nameof(PluginStepImageAttribute))
             .Select(Parse)
             .Where(image => MatchesStep(image, step))
             .Select(image => new PluginStepImageModel
@@ -27,7 +27,7 @@ public static class PluginStepImageReader
             .ToList();
     }
 
-    private static bool MatchesStep(ParsedStepImage image, CrmPluginRegistrationAttribute step)
+    private static bool MatchesStep(ParsedStepImage image, PluginRegistrationAttribute step)
     {
         if (image.Stage != step.Stage)
         {
@@ -55,7 +55,7 @@ public static class PluginStepImageReader
 
         foreach (var namedArgument in data.NamedArguments)
         {
-            if (namedArgument.MemberName == nameof(CrmPluginStepImageAttribute.Message))
+            if (namedArgument.MemberName == nameof(PluginStepImageAttribute.Message))
             {
                 image.Message = (string?)namedArgument.TypedValue.Value;
             }

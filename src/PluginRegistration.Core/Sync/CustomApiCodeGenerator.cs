@@ -6,7 +6,7 @@ namespace PluginRegistration.Core.Sync;
 public static class CustomApiCodeGenerator
 {
     public static IEnumerable<string> GenerateBlocks(
-        CrmPluginRegistrationAttribute attribute,
+        PluginRegistrationAttribute attribute,
         IEnumerable<CustomApiParameterModel> requestParameters,
         IEnumerable<CustomApiParameterModel> responseProperties,
         string indentation)
@@ -24,7 +24,7 @@ public static class CustomApiCodeGenerator
         }
     }
 
-    private static string GenerateMainAttribute(CrmPluginRegistrationAttribute attribute, string indentation)
+    private static string GenerateMainAttribute(PluginRegistrationAttribute attribute, string indentation)
     {
         var extras = string.Empty;
 
@@ -63,7 +63,7 @@ public static class CustomApiCodeGenerator
             extras += $"{indentation},AllowedCustomProcessingStepType = CustomApiProcessingStepTypeEnum.{attribute.AllowedCustomProcessingStepType}";
         }
 
-        return $"{indentation}[CrmPluginRegistration(\"{Escape(attribute.Message!)}\"{extras}{indentation})]";
+        return $"{indentation}[PluginRegistration(\"{Escape(attribute.Message!)}\"{extras}{indentation})]";
     }
 
     private static string GenerateRequestParameter(CustomApiParameterModel parameter, string indentation)

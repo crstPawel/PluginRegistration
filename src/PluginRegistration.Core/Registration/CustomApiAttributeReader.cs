@@ -8,7 +8,7 @@ public static class CustomApiAttributeReader
 {
     public static CustomApiRegistrationModel Read(
         Type pluginType,
-        CrmPluginRegistrationAttribute attribute,
+        PluginRegistrationAttribute attribute,
         CustomApiDefinition? profileOverride = null)
     {
         if (string.IsNullOrWhiteSpace(attribute.Message))
@@ -23,14 +23,14 @@ public static class CustomApiAttributeReader
         var hasMultipleCustomApis = customApiCount > 1;
 
         var requestParameters = pluginType.GetCustomAttributesData()
-            .Where(data => data.AttributeType.Name == nameof(CrmCustomApiRequestParameterAttribute))
+            .Where(data => data.AttributeType.Name == nameof(CustomApiRequestParameterAttribute))
             .Select(ParseRequestParameter)
             .Where(parameter => MatchesCustomApi(parameter.ApiUniqueName, attribute.Message!, hasMultipleCustomApis, pluginType))
             .OrderBy(parameter => parameter.UniqueName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var responseProperties = pluginType.GetCustomAttributesData()
-            .Where(data => data.AttributeType.Name == nameof(CrmCustomApiResponsePropertyAttribute))
+            .Where(data => data.AttributeType.Name == nameof(CustomApiResponsePropertyAttribute))
             .Select(ParseResponseProperty)
             .Where(property => MatchesCustomApi(property.ApiUniqueName, attribute.Message!, hasMultipleCustomApis, pluginType))
             .OrderBy(property => property.UniqueName, StringComparer.OrdinalIgnoreCase)
@@ -146,22 +146,22 @@ public static class CustomApiAttributeReader
         {
             switch (namedArgument.MemberName)
             {
-                case nameof(CrmCustomApiRequestParameterAttribute.DisplayName):
+                case nameof(CustomApiRequestParameterAttribute.DisplayName):
                     model = model with
                     {
                         DisplayName = (string?)namedArgument.TypedValue.Value ?? model.DisplayName
                     };
                     break;
-                case nameof(CrmCustomApiRequestParameterAttribute.Description):
+                case nameof(CustomApiRequestParameterAttribute.Description):
                     model = model with { Description = (string?)namedArgument.TypedValue.Value };
                     break;
-                case nameof(CrmCustomApiRequestParameterAttribute.IsRequired):
+                case nameof(CustomApiRequestParameterAttribute.IsRequired):
                     model = model with { IsRequired = (bool)namedArgument.TypedValue.Value! };
                     break;
-                case nameof(CrmCustomApiRequestParameterAttribute.EntityLogicalName):
+                case nameof(CustomApiRequestParameterAttribute.EntityLogicalName):
                     model = model with { EntityLogicalName = (string?)namedArgument.TypedValue.Value };
                     break;
-                case nameof(CrmCustomApiRequestParameterAttribute.ApiUniqueName):
+                case nameof(CustomApiRequestParameterAttribute.ApiUniqueName):
                     model = model with { ApiUniqueName = (string?)namedArgument.TypedValue.Value };
                     break;
             }
@@ -186,19 +186,19 @@ public static class CustomApiAttributeReader
         {
             switch (namedArgument.MemberName)
             {
-                case nameof(CrmCustomApiResponsePropertyAttribute.DisplayName):
+                case nameof(CustomApiResponsePropertyAttribute.DisplayName):
                     model = model with
                     {
                         DisplayName = (string?)namedArgument.TypedValue.Value ?? model.DisplayName
                     };
                     break;
-                case nameof(CrmCustomApiResponsePropertyAttribute.Description):
+                case nameof(CustomApiResponsePropertyAttribute.Description):
                     model = model with { Description = (string?)namedArgument.TypedValue.Value };
                     break;
-                case nameof(CrmCustomApiResponsePropertyAttribute.EntityLogicalName):
+                case nameof(CustomApiResponsePropertyAttribute.EntityLogicalName):
                     model = model with { EntityLogicalName = (string?)namedArgument.TypedValue.Value };
                     break;
-                case nameof(CrmCustomApiResponsePropertyAttribute.ApiUniqueName):
+                case nameof(CustomApiResponsePropertyAttribute.ApiUniqueName):
                     model = model with { ApiUniqueName = (string?)namedArgument.TypedValue.Value };
                     break;
             }

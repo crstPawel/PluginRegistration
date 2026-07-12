@@ -285,7 +285,7 @@ public sealed class PluginRegistrationService
         }
     }
 
-    private void RegisterCustomApi(Type pluginType, Guid pluginTypeId, CrmPluginRegistrationAttribute attribute)
+    private void RegisterCustomApi(Type pluginType, Guid pluginTypeId, PluginRegistrationAttribute attribute)
     {
         var profileOverride = _environmentResolver.GetCustomApiOverride(attribute.Message!);
         var model = CustomApiAttributeReader.Read(pluginType, attribute, profileOverride);
@@ -301,7 +301,7 @@ public sealed class PluginRegistrationService
         Type pluginType,
         Guid pluginTypeId,
         List<Entity> existingSteps,
-        CrmPluginRegistrationAttribute pluginStep)
+        PluginRegistrationAttribute pluginStep)
     {
         Entity? step = null;
         if (!string.IsNullOrWhiteSpace(pluginStep.Id) && Guid.TryParse(pluginStep.Id, out var stepId))
@@ -433,7 +433,7 @@ public sealed class PluginRegistrationService
         }
     }
 
-    private void RegisterImages(Guid stepId, Type pluginType, CrmPluginRegistrationAttribute pluginStep)
+    private void RegisterImages(Guid stepId, Type pluginType, PluginRegistrationAttribute pluginStep)
     {
         var existingImages = _queries.GetPluginStepImages(stepId);
 
@@ -451,7 +451,7 @@ public sealed class PluginRegistrationService
 
     private void RegisterImage(
         Guid stepId,
-        CrmPluginRegistrationAttribute pluginStep,
+        PluginRegistrationAttribute pluginStep,
         List<Entity> existingImages,
         string? imageName,
         ImageTypeEnum imageType,
@@ -487,7 +487,7 @@ public sealed class PluginRegistrationService
         }
     }
 
-    private static int GetSupportedDeployment(CrmPluginRegistrationAttribute pluginStep)
+    private static int GetSupportedDeployment(PluginRegistrationAttribute pluginStep)
     {
         if (pluginStep.Server && pluginStep.Offline)
         {

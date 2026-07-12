@@ -6,7 +6,7 @@ using PluginRegistration.Core.Registration;
 namespace PluginRegistration.Core.Sync;
 
 /// <summary>
-/// Downloads plugin step metadata from Dataverse and writes CrmPluginRegistration attributes into source code.
+/// Downloads plugin step metadata from Dataverse and writes PluginRegistration attributes into source code.
 /// </summary>
 public sealed class MetadataSyncService
 {
@@ -123,21 +123,20 @@ public sealed class MetadataSyncService
             var stageEnum = (StageEnum)step.GetAttributeValue<OptionSetValue>("stage")!.Value;
             var stepName = step.GetAttributeValue<string>("name")!;
             var defaultStepName = PluginStepNameResolver.Resolve(className, stageEnum);
-            var attribute = new CrmPluginRegistrationAttribute(
+            var attribute = CreatePluginRegistrationAttribute(
                 messageName,
                 entityLogicalName!,
                 stageEnum,
                 step.GetAttributeValue<OptionSetValue>("mode")?.Value == 1
                     ? ExecutionModeEnum.Asynchronous
                     : ExecutionModeEnum.Synchronous,
-                step.GetAttributeValue<string>("filteringattributes"),
-                step.GetAttributeValue<int?>("rank") ?? 1)
-            {
-                Id = step.Id.ToString(),
-                DeleteAsyncOperation = step.GetAttributeValue<bool?>("asyncautodelete") ?? false,
-                Description = step.GetAttributeValue<string>("description"),
-                UnSecureConfiguration = step.GetAttributeValue<string>("configuration")
-            };
+                step.GetAttributeValue<string>("filteringattributes") ?? string.Empty,
+                step.GetAttributeValue<int?>("rank") ?? 1);
+
+            attribute.Id = step.Id.ToString();
+            attribute.DeleteAsyncOperation = step.GetAttributeValue<bool?>("asyncautodelete") ?? false;
+            attribute.Description = step.GetAttributeValue<string>("description");
+            attribute.UnSecureConfiguration = step.GetAttributeValue<string>("configuration");
 
             if (!string.Equals(stepName, defaultStepName, StringComparison.Ordinal))
             {
@@ -160,7 +159,7 @@ public sealed class MetadataSyncService
         foreach (var details in customApis)
         {
             var api = details.Api;
-            var attribute = new CrmPluginRegistrationAttribute(api.GetAttributeValue<string>("uniquename")!)
+            var attribute = new PluginRegistrationAttribute(api.GetAttributeValue<string>("uniquename")!)
             {
                 FriendlyName = api.GetAttributeValue<string>("displayname"),
                 Description = api.GetAttributeValue<string>("description"),
@@ -222,7 +221,7 @@ public sealed class MetadataSyncService
         }
 
         var isolationMode = _queries.GetAssemblyIsolationMode(pluginType.Id);
-        var attribute = new CrmPluginRegistrationAttribute(
+        var attribute = new PluginRegistrationAttribute(
             pluginType.GetAttributeValue<string>("name")!,
             pluginType.GetAttributeValue<string>("friendlyname")!,
             pluginType.GetAttributeValue<string>("description") ?? string.Empty,
@@ -230,5 +229,48 @@ public sealed class MetadataSyncService
             isolationMode?.Value == 2 ? IsolationModeEnum.Sandbox : IsolationModeEnum.None);
 
         parser.AddAttribute(attribute, className);
+    }
+
+    /// <summary>
+    /// Creates a PluginRegistrationAttribute preferring MessageTypeEnum when the message is one of the known common types.
+    /// Falls back to MessageNameEnum for other messages.
+    /// </summary>
+    private static PluginRegistrationAttribute CreatePluginRegistrationAttribute(
+        string messageName,
+        string entityLogicalName,
+        StageEnum stage,
+        ExecutionModeEnum executionMode,
+        string filteringAttributes,
+        int rank)
+    {
+        if (Enum.TryParse<MessageTypeEnum>(messageName, true, out var messageType))
+        {
+            return new PluginRegistrationAttribute(
+                messageType,
+                entityLogicalName,
+                stage,
+                executionMode,
+                filteringAttributes,
+                rank);
+        }
+
+        // Fallback to MessageNameEnum for less common / custom messages
+        if (Enum.TryParse<MessageNameEnum>(messageName, true, out var messageNameEnum))
+        {
+#pragma warning disable CS0618
+            return new PluginRegistrationAttribute(
+                messageNameEnum,
+                entityLogicalName,
+                stage,
+                executionMode,
+                filteringAttributes,
+                rank);
+#pragma warning restore CS0618
+        }
+
+        // For truly unknown messages, fall back to MessageNameEnum by name (will be stored as string internally)
+        // This should be rare. We use the MessageNameEnum path as closest.
+        throw new PluginRegistrationException(
+            $"Unknown message '{messageName}'. Consider adding it to MessageTypeEnum or using the tool with full MessageNameEnum support.");
     }
 }

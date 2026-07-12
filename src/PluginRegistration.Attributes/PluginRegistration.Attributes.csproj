@@ -4,17 +4,17 @@
     <TargetFramework>net462</TargetFramework>
     <RootNamespace>PluginRegistration.Attributes</RootNamespace>
     <AssemblyName>PluginRegistration.Attributes</AssemblyName>
-    <Description>Dataverse / Dynamics 365 plugin registration attributes for use with [CrmPluginRegistration], Custom API, and step images.</Description>
+    <Description>Dataverse / Dynamics 365 plugin registration attributes. Use [PluginRegistration] with MessageTypeEnum for clean plugin step registration.</Description>
 
     <!-- Package identity (inherits Version, Authors, Tags etc. from Directory.Build.props) -->
     <PackageId>PluginRegistration.Attributes</PackageId>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReadmeFile>README.NuGet.md</PackageReadmeFile>
     <IsPackable>true</IsPackable>
     <PackageProjectUrl>https://github.com/crstPawel/PluginRegistration</PackageProjectUrl>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\..\README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="..\..\README.NuGet.md" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
 </Project>

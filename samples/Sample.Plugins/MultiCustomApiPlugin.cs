@@ -6,39 +6,15 @@ namespace Sample.Plugins
 {
     /// <summary>
     /// One plugin class can implement multiple Custom APIs. Each API is declared with its own
-    /// [CrmPluginRegistration] attribute; request/response metadata is scoped with ApiUniqueName.
+    /// [PluginRegistration] attribute; request/response metadata is scoped with ApiUniqueName.
     /// </summary>
-    [CrmPluginRegistration(
-        "sample_ValidateAccount",
-        FriendlyName = "Validate Account",
-        Description = "Validates account data before processing")]
-    [CrmCustomApiRequestParameter(
-        "AccountId",
-        CustomApiParameterTypeEnum.String,
-        ApiUniqueName = "sample_ValidateAccount",
-        IsRequired = true,
-        Description = "Account identifier")]
-    [CrmCustomApiResponseProperty(
-        "IsValid",
-        CustomApiParameterTypeEnum.Boolean,
-        ApiUniqueName = "sample_ValidateAccount",
-        Description = "Whether the account passed validation")]
-    [CrmPluginRegistration(
-        "sample_EnrichAccount",
-        FriendlyName = "Enrich Account",
-        Description = "Enriches account data from an external source")]
-    [CrmCustomApiRequestParameter(
-        "AccountId",
-        CustomApiParameterTypeEnum.String,
-        ApiUniqueName = "sample_EnrichAccount",
-        IsRequired = true,
-        Description = "Account identifier")]
-    [CrmCustomApiResponseProperty(
-        "EnrichedName",
-        CustomApiParameterTypeEnum.String,
-        ApiUniqueName = "sample_EnrichAccount",
-        Description = "Enriched account name")]
-    public sealed class MultiCustomApiPlugin : IPlugin
+    [CustomApiRegistration("sample_ValidateAccount", FriendlyName = "Validate Account", Description = "Validates account data before processing")]
+    [CustomApiRequestParameter("AccountId", CustomApiParameterTypeEnum.String, ApiUniqueName = "sample_ValidateAccount", IsRequired = true, Description = "Account identifier")]
+    [CustomApiResponseProperty("IsValid", CustomApiParameterTypeEnum.Boolean, ApiUniqueName = "sample_ValidateAccount", Description = "Whether the account passed validation")]
+    [CustomApiRegistration("sample_EnrichAccount", FriendlyName = "Enrich Account", Description = "Enriches account data from an external source")]
+    [CustomApiRequestParameter("AccountId", CustomApiParameterTypeEnum.String, ApiUniqueName = "sample_EnrichAccount", IsRequired = true, Description = "Account identifier")]
+    [CustomApiResponseProperty("EnrichedName", CustomApiParameterTypeEnum.String, ApiUniqueName = "sample_EnrichAccount", Description = "Enriched account name")] 
+    public class MultiCustomApiPlugin : IPlugin
     {
         public void Execute(IServiceProvider serviceProvider)
         {

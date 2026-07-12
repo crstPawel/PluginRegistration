@@ -5,15 +5,16 @@ namespace PluginRegistration.Core.Registration;
 
 public static class AttributeParser
 {
-    public static CrmPluginRegistrationAttribute Parse(CustomAttributeData data)
+    public static PluginRegistrationAttribute Parse(CustomAttributeData data)
     {
-        CrmPluginRegistrationAttribute? attribute = null;
+        PluginRegistrationAttribute? attribute = null;
         var arguments = data.ConstructorArguments.ToArray();
 
-        if (arguments.Length == 6 && arguments[0].ArgumentType.Name == "String")
+        if (arguments.Length == 6 && arguments[0].ArgumentType.Name == "MessageTypeEnum")
         {
+            // Preferred style using MessageTypeEnum
             attribute = CreatePluginStepAttribute(
-                (string)arguments[0].Value!,
+                ((MessageTypeEnum)Enum.ToObject(typeof(MessageTypeEnum), (int)arguments[0].Value!)).ToString(),
                 (string)arguments[1].Value!,
                 (StageEnum)Enum.ToObject(typeof(StageEnum), (int)arguments[2].Value!),
                 (ExecutionModeEnum)Enum.ToObject(typeof(ExecutionModeEnum), (int)arguments[3].Value!),
@@ -32,7 +33,7 @@ public static class AttributeParser
         }
         else if (arguments.Length == 5 && arguments[0].ArgumentType.Name == "String")
         {
-            attribute = new CrmPluginRegistrationAttribute(
+            attribute = new PluginRegistrationAttribute(
                 (string)arguments[0].Value!,
                 (string)arguments[1].Value!,
                 (string)arguments[2].Value!,
@@ -41,11 +42,11 @@ public static class AttributeParser
         }
         else if (arguments.Length == 1 && arguments[0].ArgumentType.Name == "String")
         {
-            attribute = new CrmPluginRegistrationAttribute((string)arguments[0].Value!);
+            attribute = new PluginRegistrationAttribute((string)arguments[0].Value!);
         }
         else
         {
-            throw new PluginRegistrationException("Unsupported CrmPluginRegistration attribute constructor.");
+            throw new PluginRegistrationException("Unsupported PluginRegistration attribute constructor. Use MessageTypeEnum (recommended) as the first parameter for plugin steps, or MessageNameEnum for advanced messages.");
         }
 
         foreach (var namedArgument in data.NamedArguments)
@@ -107,7 +108,7 @@ public static class AttributeParser
         return attribute;
     }
 
-    private static CrmPluginRegistrationAttribute CreatePluginStepAttribute(
+    private static PluginRegistrationAttribute CreatePluginStepAttribute(
         string message,
         string entityLogicalName,
         StageEnum stage,
@@ -117,7 +118,7 @@ public static class AttributeParser
     {
         var filteringAttributes = FilteringAttributesParser.Parse(filteringAttributesArgument);
 
-        return new CrmPluginRegistrationAttribute(
+        return PluginRegistrationAttribute.CreateStep(
             message,
             entityLogicalName,
             stage,
@@ -126,12 +127,12 @@ public static class AttributeParser
             executionOrder);
     }
 
-    public static bool IsCustomApiRegistration(CrmPluginRegistrationAttribute attribute)
+    public static bool IsCustomApiRegistration(PluginRegistrationAttribute attribute)
         => attribute.Name is null && attribute.Message is not null && attribute.Stage is null;
 
-    public static bool IsWorkflowActivityRegistration(CrmPluginRegistrationAttribute attribute)
+    public static bool IsWorkflowActivityRegistration(PluginRegistrationAttribute attribute)
         => attribute.Stage is null && attribute.Name is not null && attribute.FriendlyName is not null;
 
-    public static bool IsPluginStepRegistration(CrmPluginRegistrationAttribute attribute)
+    public static bool IsPluginStepRegistration(PluginRegistrationAttribute attribute)
         => attribute.Stage is not null;
 }

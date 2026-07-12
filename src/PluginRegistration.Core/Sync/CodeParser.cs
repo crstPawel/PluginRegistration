@@ -131,7 +131,7 @@ public sealed class CodeParser
     }
 
     public void AddCustomApiAttributes(
-        CrmPluginRegistrationAttribute attribute,
+        PluginRegistrationAttribute attribute,
         IEnumerable<CustomApiParameterModel> requestParameters,
         IEnumerable<CustomApiParameterModel> responseProperties,
         string className)
@@ -158,7 +158,7 @@ public sealed class CodeParser
         _code = _code.Insert(lineBreak, string.Concat(blocks));
     }
 
-    public void AddAttribute(CrmPluginRegistrationAttribute attribute, string className)
+    public void AddAttribute(PluginRegistrationAttribute attribute, string className)
     {
         InsertBeforeClass(AttributeCodeGenerator.Generate(attribute, indentation: GetIndentation(className), className), className);
     }
