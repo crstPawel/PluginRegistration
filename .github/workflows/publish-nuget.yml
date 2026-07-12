@@ -5,12 +5,16 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   ARTIFACTS_DIR: ./artifacts
 
+on:
+  workflow_dispatch:   # Tylko ręczne uruchomienie
+
 jobs:
   build-and-publish:
     name: Build & Publish NuGet
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write   
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -36,10 +40,9 @@ jobs:
         id: version
         shell: bash
         run: |
-          # Odczytaj wersję z Directory.Build.props
-          VER=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -1 || true)
+          VER=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -1 || echo "")
           echo "version=$VER" >> $GITHUB_OUTPUT
-          echo "Version from Directory.Build.props: $VER"       
+          echo "Using version: $VER"
 
       - name: Pack NuGet packages
         run: |
@@ -60,22 +63,25 @@ jobs:
           path: ${{ env.ARTIFACTS_DIR }}/
           retention-days: 30
 
-      - name: Get OIDC token for NuGet Trusted Publishing
-        id: nuget-oidc
+      # ==================== TRUSTED PUBLISHING ====================
+      - name: NuGet login (Trusted Publishing)
+        uses: NuGet/login@v1
+        id: nuget-login
         with:
           user: psobczak
-          
 
       - name: Publish to NuGet.org
         run: |
-          echo "Pushing packages using OIDC token..."
+          echo "Pushing packages to nuget.org..."
           dotnet nuget push "${{ env.ARTIFACTS_DIR }}/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
 
       - name: Publish summary
+        if: success()
         run: |
-          echo "✅ Pakiety NuGet zostały opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Pakiety NuGet zostały pomyślnie opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Opublikowane pakiety:" >> $GITHUB_STEP_SUMMARY
-          ls ${{ env.ARTIFACTS_DIR }}/*.nupkg 2>/dev/null | xargs -I {} basename {} | sed 's/^/- \`/' | sed 's/$/\`/' >> $GITHUB_STEP_SUMMARY || echo "- (brak plików)" >> $GITHUB_STEP_SUMMARY
+          echo "**Wersja:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Data publikacji:** $(date)" >> $GITHUB_STEP_SUMMARY
