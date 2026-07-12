@@ -16,7 +16,7 @@ public sealed class DataverseQueries
     {
         var query = new QueryExpression("pluginassembly")
         {
-            ColumnSet = new ColumnSet("pluginassemblyid", "name"),
+            ColumnSet = new ColumnSet("pluginassemblyid", "name", "packageid"),
             Criteria = new FilterExpression
             {
                 Conditions =
@@ -28,6 +28,43 @@ public sealed class DataverseQueries
         };
 
         return _service.RetrieveMultiple(query).Entities.FirstOrDefault();
+    }
+
+    public Entity? GetPluginPackageByName(string name)
+    {
+        QueryExpression query = new QueryExpression("pluginpackage")
+        {
+            ColumnSet = new ColumnSet("pluginpackageid", "name", "uniquename"),
+            Criteria = new FilterExpression(LogicalOperator.Or)
+            {
+                Conditions =
+                {
+                    new ConditionExpression("name", ConditionOperator.Equal, name),
+                    new ConditionExpression("uniquename", ConditionOperator.Equal, name)
+                }
+            },
+            TopCount = 1
+        };
+
+        return _service.RetrieveMultiple(query).Entities.FirstOrDefault();
+    }
+
+    public List<Entity> GetPluginAssembliesForPackage(Guid packageId)
+    {
+        QueryExpression query = new QueryExpression("pluginassembly")
+        {
+            ColumnSet = new ColumnSet("pluginassemblyid", "name"),
+            Criteria = new FilterExpression
+            {
+                Conditions =
+                {
+                    new ConditionExpression("packageid", ConditionOperator.Equal, packageId)
+                }
+            },
+            Orders = { new OrderExpression("name", OrderType.Ascending) }
+        };
+
+        return _service.RetrieveMultiple(query).Entities.ToList();
     }
 
     public List<Entity> GetPluginTypes(Guid assemblyId, bool? isWorkflowActivity = null)

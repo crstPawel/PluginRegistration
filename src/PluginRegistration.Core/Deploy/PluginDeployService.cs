@@ -15,7 +15,7 @@ public sealed class PluginDeployService
         _trace = trace;
     }
 
-    public void Deploy(string workingDirectory, bool excludePluginSteps = false, bool includeWorkflowActivities = false)
+    public void Deploy(string workingDirectory, bool excludePluginSteps = false)
     {
         var config = PluginRegistrationConfig.Load(workingDirectory);
         var entries = config.GetPluginEntries();
@@ -35,14 +35,14 @@ public sealed class PluginDeployService
             registrationService.SolutionUniqueName = entry.Solution;
             var skipSteps = excludePluginSteps || entry.ExcludePluginSteps;
 
+            foreach (string packagePath in config.ResolvePackagePaths(entry))
+            {
+                registrationService.RegisterPluginPackage(packagePath, skipSteps);
+            }
+
             foreach (var assemblyPath in config.ResolveAssemblyPaths(entry))
             {
                 registrationService.RegisterPlugins(assemblyPath, skipSteps);
-
-                if (includeWorkflowActivities)
-                {
-                    registrationService.RegisterWorkflowActivities(assemblyPath);
-                }
             }
         }
 
