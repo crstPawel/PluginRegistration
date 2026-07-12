@@ -5,15 +5,14 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
 
-    <!-- Roslyn Analyzer specific settings -->
+    <!-- Roslyn analyzer: build-time only, never deployed or referenced at runtime -->
+    <IsRoslynComponent>true</IsRoslynComponent>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-    <!-- Suppress release tracking warning for this internal analyzer -->
-    <NoWarn>$(NoWarn);RS2008</NoWarn>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <IsPackable>false</IsPackable>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
 
-    <!-- Analyzer metadata -->
     <AssemblyName>PluginRegistration.Attributes.Analyzers</AssemblyName>
     <RootNamespace>PluginRegistration.Attributes.Analyzers</RootNamespace>
     <Description>Roslyn analyzer for PluginRegistration.Attributes (compile-time validation for Custom API UniqueName etc.)</Description>
@@ -24,15 +23,11 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- 
-    NOTE: We intentionally do NOT reference PluginRegistration.Attributes at runtime.
-    Analyzers must be self-contained. The validation rule is duplicated (small) or 
-    could be included via a linked .cs file from the Attributes project.
-  -->
-
-  <!-- 
-    When the Attributes package is published, we want the analyzer to be automatically loaded.
-    We will configure this in the main Attributes.csproj later by including the analyzer output.
-  -->
+  <!-- IncludeBuildOutput=false hides the DLL from GetTargetPath; expose it for pack / targets wiring -->
+  <Target Name="GetTargetPath" Returns="@(TargetPathWithTargetPlatformMoniker)">
+    <ItemGroup>
+      <TargetPathWithTargetPlatformMoniker Include="$(TargetDir)$(AssemblyName).dll" />
+    </ItemGroup>
+  </Target>
 
 </Project>
