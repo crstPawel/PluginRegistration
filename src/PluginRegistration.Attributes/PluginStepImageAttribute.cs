@@ -22,10 +22,5 @@ namespace PluginRegistration.Attributes
         public string Name { get; }
         public ImageTypeEnum ImageType { get; }
         public string Attributes { get; }
-
-        /// <summary>
-        /// Optional SDK message name. Use when the class registers multiple steps on the same stage.
-        /// </summary>
-        public string? Message { get; set; }
     }
 }

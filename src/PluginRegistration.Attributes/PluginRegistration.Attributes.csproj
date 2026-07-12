@@ -17,4 +17,43 @@
     <None Include="..\..\README.NuGet.md" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
+  <!-- 
+    Include the Roslyn analyzer so that it is automatically loaded when a project references
+    PluginRegistration.Attributes (both via ProjectReference and via NuGet package).
+  -->
+  <ItemGroup>
+    <!-- 
+      The analyzer project is referenced here so that:
+      - It is automatically included when packing PluginRegistration.Attributes NuGet package.
+      - Analyzer items can flow to consumers.
+    -->
+    <ProjectReference Include="..\PluginRegistration.Attributes.Analyzers\PluginRegistration.Attributes.Analyzers.csproj"
+                      PrivateAssets="all"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Analyzer" />
+  </ItemGroup>
+
+  <!-- 
+    Packaging: Include the Roslyn analyzer in the NuGet package under analyzers/dotnet/cs.
+    This makes the analyzer load automatically for NuGet consumers:
+      <PackageReference Include="PluginRegistration.Attributes" Version="..." />
+  -->
+  <!-- 
+    Ensure the analyzer DLL is built and included in the package for all configurations.
+  -->
+  <Target Name="BuildAnalyzerForPack" BeforeTargets="Pack">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\PluginRegistration.Attributes.Analyzers\PluginRegistration.Attributes.Analyzers.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)" />
+  </Target>
+
+  <ItemGroup>
+    <!-- Analyzer will be included in the NuGet under analyzers/dotnet/cs/ -->
+    <None Include="..\PluginRegistration.Attributes.Analyzers\bin\$(Configuration)\netstandard2.0\PluginRegistration.Attributes.Analyzers.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false"
+          Condition="Exists('..\PluginRegistration.Attributes.Analyzers\bin\$(Configuration)\netstandard2.0\PluginRegistration.Attributes.Analyzers.dll')" />
+  </ItemGroup>
+
 </Project>

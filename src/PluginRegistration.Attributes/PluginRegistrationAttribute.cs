@@ -42,18 +42,21 @@ namespace PluginRegistration.Attributes
         }
 
         public string? Id { get; set; }
-        public string? FriendlyName { get; set; }
-        public string? GroupName { get; set; }
-        public string? Description { get; set; }
+        public string? Message { get; }
+        
+        
+        
+        
         public bool DeleteAsyncOperation { get; set; }
         public string? UnSecureConfiguration { get; set; }
         public string? SecureConfiguration { get; set; }
-        public bool Offline { get; set; }
+        
         public bool Server { get; set; } = true;
+        
         public PluginStepOperationEnum? Action { get; set; }
 
         public IsolationModeEnum IsolationMode { get; }
-        public string? Message { get; }
+
         public string? EntityLogicalName { get; }
         public string[] FilteringAttributes { get; }
         public string? Name { get; set; }

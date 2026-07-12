@@ -9,6 +9,16 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\PluginRegistration.Attributes\PluginRegistration.Attributes.csproj" />
+
+    <!-- 
+      Analyzer is declared in PluginRegistration.Attributes.csproj (for NuGet packaging).
+      We reference it directly here for reliable dev-time experience with project references.
+    -->
+    <ProjectReference Include="..\..\src\PluginRegistration.Attributes.Analyzers\PluginRegistration.Attributes.Analyzers.csproj"
+                      PrivateAssets="all"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+
     <PackageReference Include="Microsoft.CrmSdk.CoreAssemblies" Version="9.0.2.60" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="8.0.1" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />

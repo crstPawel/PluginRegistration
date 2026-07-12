@@ -3,6 +3,7 @@
     <Project Path="samples/Sample.Plugins/Sample.Plugins.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/PluginRegistration.Attributes.Analyzers/PluginRegistration.Attributes.Analyzers.csproj" />
     <Project Path="src/PluginRegistration.Attributes/PluginRegistration.Attributes.csproj" />
     <Project Path="src/PluginRegistration.Core/PluginRegistration.Core.csproj" />
     <Project Path="src/PluginRegistration.Tool/PluginRegistration.Tool.csproj" />
