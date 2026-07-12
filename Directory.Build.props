@@ -7,7 +7,7 @@
          Package / NuGet publishing configuration
          ============================================ -->
     <!-- Bump this before releasing a new version of the packages -->
-    <Version>1.0.3</Version>
+    <Version>2.0.1</Version>
     <Authors>PluginRegistrationTool</Authors>
     <Company>PluginRegistrationTool</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
