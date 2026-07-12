@@ -8,4 +8,7 @@
     <Project Path="src/PluginRegistration.Core/PluginRegistration.Core.csproj" />
     <Project Path="src/PluginRegistration.Tool/PluginRegistration.Tool.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PluginRegistration.Core.Tests/PluginRegistration.Core.Tests.csproj" />
+  </Folder>
 </Solution>
