@@ -8,8 +8,12 @@ namespace PluginRegistration.Core.Config;
 
 public sealed class ConfigScaffoldService
 {
-    private static readonly Regex AttributeRegex = new(
-        @"\[CrmPluginRegistration\(([\s\S]+?)\)\]",
+    private static readonly Regex PluginRegistrationRegex = new(
+        @"\[PluginRegistration\(([\s\S]+?)\)\]|\[CrmPluginRegistration\(([\s\S]+?)\)\]",
+        RegexOptions.Compiled);
+
+    private static readonly Regex CustomApiRegistrationRegex = new(
+        @"\[CustomApiRegistration\(([\s\S]+?)\)\]",
         RegexOptions.Compiled);
 
     private static readonly Regex ClassDeclarationRegex = new(
@@ -41,7 +45,6 @@ public sealed class ConfigScaffoldService
 
     public string Generate(
         string workingDirectory,
-        IEnumerable<string> profiles,
         string assemblyPath = "bin/Release",
         string? solution = null,
         bool force = false)
@@ -53,7 +56,7 @@ public sealed class ConfigScaffoldService
                 $"File already exists: {outputPath}. Use --force to overwrite.");
         }
 
-        var config = CreateFromSource(workingDirectory, profiles, assemblyPath, solution);
+        var config = CreateFromSource(workingDirectory, assemblyPath, solution);
 
         var json = JsonConvert.SerializeObject(config, Formatting.Indented, new JsonSerializerSettings
         {
@@ -74,13 +77,11 @@ public sealed class ConfigScaffoldService
 
     private static PluginRegistrationConfig CreateFromSource(
         string workingDirectory,
-        IEnumerable<string> profiles,
         string assemblyPath,
         string? solution)
     {
         var stepNames = DiscoverStepNames(workingDirectory);
         var customApis = DiscoverCustomApis(workingDirectory);
-        var profileArray = profiles.ToArray();
 
         var config = new PluginRegistrationConfig
         {
@@ -88,39 +89,30 @@ public sealed class ConfigScaffoldService
             [
                 new PluginDeployEntry
                 {
-                    Profile = string.Join(",", profileArray),
                     AssemblyPath = assemblyPath,
                     Solution = solution
                 }
-            ],
-            Profiles = new Dictionary<string, ProfileSettings>(StringComparer.OrdinalIgnoreCase)
+            ]
         };
 
-        foreach (var profile in profileArray)
+        foreach (var stepName in stepNames)
         {
-            var settings = new ProfileSettings();
-
-            foreach (var stepName in stepNames)
+            config.StepOverrides[stepName] = new StepOverride
             {
-                settings.StepOverrides[stepName] = new StepOverride
-                {
-                    UnSecureConfiguration = string.Empty
-                };
-            }
+                UnSecureConfiguration = string.Empty
+            };
+        }
 
-            foreach (var api in customApis)
+        foreach (var api in customApis)
+        {
+            config.CustomApis.Add(new CustomApiDefinition
             {
-                settings.CustomApis.Add(new CustomApiDefinition
-                {
-                    UniqueName = api.UniqueName,
-                    DisplayName = api.DisplayName,
-                    PluginTypeName = api.PluginTypeName,
-                    CreateIfMissing = string.Equals(profile, profileArray[0], StringComparison.OrdinalIgnoreCase),
-                    BindingType = 0
-                });
-            }
-
-            config.Profiles[profile] = settings;
+                UniqueName = api.UniqueName,
+                DisplayName = api.DisplayName,
+                PluginTypeName = api.PluginTypeName,
+                CreateIfMissing = true,
+                BindingType = 0
+            });
         }
 
         return config;
@@ -146,7 +138,33 @@ public sealed class ConfigScaffoldService
                 ? namespaceMatch.Groups[1].Value
                 : string.Empty;
 
-            foreach (Match match in AttributeRegex.Matches(content))
+            foreach (Match match in PluginRegistrationRegex.Matches(content))
+            {
+                var className = ResolveClassForAttribute(content, match.Index + match.Length);
+                if (string.IsNullOrWhiteSpace(className))
+                {
+                    continue;
+                }
+
+                var fullTypeName = string.IsNullOrWhiteSpace(namespaceName)
+                    ? className
+                    : $"{namespaceName}.{className}";
+
+                var attributeBody = !string.IsNullOrEmpty(match.Groups[1].Value)
+                    ? match.Groups[1].Value
+                    : match.Groups[2].Value;
+
+                var stageMatch = StageRegex.Match(attributeBody);
+                if (!stageMatch.Success
+                    || !Enum.TryParse<StageEnum>(stageMatch.Groups["stage"].Value, out var stage))
+                {
+                    continue;
+                }
+
+                stepNames.Add(PluginStepNameResolver.Resolve(fullTypeName, stage));
+            }
+
+            foreach (Match match in CustomApiRegistrationRegex.Matches(content))
             {
                 var className = ResolveClassForAttribute(content, match.Index + match.Length);
                 if (string.IsNullOrWhiteSpace(className))
@@ -159,17 +177,6 @@ public sealed class ConfigScaffoldService
                     : $"{namespaceName}.{className}";
 
                 var attributeBody = match.Groups[1].Value;
-                var stageMatch = StageRegex.Match(attributeBody);
-                if (stageMatch.Success)
-                {
-                    if (Enum.TryParse<StageEnum>(stageMatch.Groups["stage"].Value, out var stage))
-                    {
-                        stepNames.Add(PluginStepNameResolver.Resolve(fullTypeName, stage));
-                    }
-
-                    continue;
-                }
-
                 var uniqueNameMatch = FirstStringArgRegex.Match(attributeBody);
                 if (!uniqueNameMatch.Success)
                 {

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace PluginRegistration.Tool.Cli;
 
 internal static class ConnectionValidation

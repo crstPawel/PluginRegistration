@@ -6,7 +6,7 @@ namespace PluginRegistration.Core.Sync;
 public static class CustomApiCodeGenerator
 {
     public static IEnumerable<string> GenerateBlocks(
-        CrmPluginRegistrationAttribute attribute,
+        CustomApiRegistration attribute,
         IEnumerable<CustomApiParameterModel> requestParameters,
         IEnumerable<CustomApiParameterModel> responseProperties,
         string indentation)
@@ -24,28 +24,43 @@ public static class CustomApiCodeGenerator
         }
     }
 
-    private static string GenerateMainAttribute(CrmPluginRegistrationAttribute attribute, string indentation)
+    private static string GenerateMainAttribute(CustomApiRegistration attribute, string indentation)
     {
+        var uniqueName = attribute.UniqueName;
+        var displayName = attribute.DisplayName ?? uniqueName;
+        var bindingType = attribute.CustomApiBindingType;
+        var processingStepType = attribute.ProcessingStepType;
+        var boundEntity = attribute.BoundEntityLogicalName ?? string.Empty;
+
+        string constructor;
+        if (bindingType != CustomApiBindingTypeEnum.Global
+            || processingStepType != CustomApiProcessingStepTypeEnum.None
+            || !string.IsNullOrWhiteSpace(boundEntity))
+        {
+            constructor =
+                $"\"{Escape(uniqueName)}\", \"{Escape(displayName)}\", CustomApiProcessingStepTypeEnum.{processingStepType}, CustomApiBindingTypeEnum.{bindingType}, \"{Escape(boundEntity)}\"";
+        }
+        else if (!string.Equals(displayName, uniqueName, StringComparison.Ordinal))
+        {
+            constructor = $"\"{Escape(uniqueName)}\", \"{Escape(displayName)}\"";
+        }
+        else
+        {
+            constructor = $"\"{Escape(uniqueName)}\"";
+        }
+
         var extras = string.Empty;
 
-        if (!string.IsNullOrWhiteSpace(attribute.FriendlyName))
+        if (constructor.StartsWith($"\"{Escape(uniqueName)}\"", StringComparison.Ordinal)
+            && !string.Equals(displayName, uniqueName, StringComparison.Ordinal)
+            && !constructor.Contains("\", \"", StringComparison.Ordinal))
         {
-            extras += $"{indentation},FriendlyName = \"{Escape(attribute.FriendlyName)}\"";
+            extras += $"{indentation},FriendlyName = \"{Escape(displayName)}\"";
         }
 
         if (!string.IsNullOrWhiteSpace(attribute.Description))
         {
             extras += $"{indentation},Description = \"{Escape(attribute.Description)}\"";
-        }
-
-        if (attribute.CustomApiBindingType != CustomApiBindingTypeEnum.Global)
-        {
-            extras += $"{indentation},CustomApiBindingType = CustomApiBindingTypeEnum.{attribute.CustomApiBindingType}";
-        }
-
-        if (!string.IsNullOrWhiteSpace(attribute.BoundEntityLogicalName))
-        {
-            extras += $"{indentation},BoundEntityLogicalName = \"{Escape(attribute.BoundEntityLogicalName)}\"";
         }
 
         if (attribute.IsFunction)
@@ -58,12 +73,12 @@ public static class CustomApiCodeGenerator
             extras += $"{indentation},IsPrivate = true";
         }
 
-        if (attribute.AllowedCustomProcessingStepType != CustomApiProcessingStepTypeEnum.None)
+        if (!string.IsNullOrWhiteSpace(attribute.ExecutePrivilegeName))
         {
-            extras += $"{indentation},AllowedCustomProcessingStepType = CustomApiProcessingStepTypeEnum.{attribute.AllowedCustomProcessingStepType}";
+            extras += $"{indentation},ExecutePrivilegeName = \"{Escape(attribute.ExecutePrivilegeName)}\"";
         }
 
-        return $"{indentation}[CrmPluginRegistration(\"{Escape(attribute.Message!)}\"{extras}{indentation})]";
+        return $"{indentation}[CustomApiRegistration({constructor}{extras}{indentation})]";
     }
 
     private static string GenerateRequestParameter(CustomApiParameterModel parameter, string indentation)
@@ -95,7 +110,7 @@ public static class CustomApiCodeGenerator
             extras += $"{indentation},ApiUniqueName = \"{Escape(parameter.ApiUniqueName)}\"";
         }
 
-        return $"{indentation}[CrmCustomApiRequestParameter(\"{Escape(parameter.UniqueName)}\", CustomApiParameterTypeEnum.{parameter.Type}{extras}{indentation})]";
+        return $"{indentation}[CustomApiRequestParameter(\"{Escape(parameter.UniqueName)}\", CustomApiParameterTypeEnum.{parameter.Type}{extras}{indentation})]";
     }
 
     private static string GenerateResponseProperty(CustomApiParameterModel property, string indentation)
@@ -122,7 +137,7 @@ public static class CustomApiCodeGenerator
             extras += $"{indentation},ApiUniqueName = \"{Escape(property.ApiUniqueName)}\"";
         }
 
-        return $"{indentation}[CrmCustomApiResponseProperty(\"{Escape(property.UniqueName)}\", CustomApiParameterTypeEnum.{property.Type}{extras}{indentation})]";
+        return $"{indentation}[CustomApiResponseProperty(\"{Escape(property.UniqueName)}\", CustomApiParameterTypeEnum.{property.Type}{extras}{indentation})]";
     }
 
     private static string Escape(string value) => value.Replace("\"", "\"\"");

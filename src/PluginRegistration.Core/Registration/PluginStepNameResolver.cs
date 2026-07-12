@@ -10,9 +10,9 @@ public static class PluginStepNameResolver
     public static string Resolve(string pluginTypeFullName, StageEnum stage)
         => $"{pluginTypeFullName}.{stage}";
 
-    public static CrmPluginRegistrationAttribute ApplyStepName(
+    public static PluginRegistrationAttribute ApplyStepName(
         Type pluginType,
-        CrmPluginRegistrationAttribute attribute)
+        PluginRegistrationAttribute attribute)
     {
         if (attribute.Stage is not null && string.IsNullOrWhiteSpace(attribute.Name))
         {

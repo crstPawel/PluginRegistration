@@ -18,12 +18,12 @@ public sealed class PluginRegistrationService
     public PluginRegistrationService(
         IOrganizationService service,
         ITrace trace,
-        ProfileSettings? profileSettings)
+        PluginRegistrationConfig config)
     {
         _service = service;
         _queries = new DataverseQueries(service);
         _trace = trace;
-        _environmentResolver = new EnvironmentConfigurationResolver(profileSettings);
+        _environmentResolver = new EnvironmentConfigurationResolver(config.StepOverrides, config.CustomApis);
     }
 
     public string? SolutionUniqueName { get; set; }
@@ -96,15 +96,20 @@ public sealed class PluginRegistrationService
         IEnumerable<Type> pluginTypes,
         bool isWorkflowActivity = false)
     {
-        var firstAttribute = pluginTypes
-            .SelectMany(ReflectionHelper.GetRegistrationAttributes)
-            .Select(AttributeParser.Parse)
-            .FirstOrDefault();
+        var hasPluginSteps = pluginTypes.Any(type => ReflectionHelper.GetRegistrationAttributes(type).Any());
+        var hasCustomApis = pluginTypes.Any(type => ReflectionHelper.GetCustomApiRegistrationAttributes(type).Any());
 
-        if (firstAttribute is null)
+        if (!hasPluginSteps && !hasCustomApis)
         {
             return null;
         }
+
+        var firstAttribute = hasPluginSteps
+            ? pluginTypes
+                .SelectMany(ReflectionHelper.GetRegistrationAttributes)
+                .Select(AttributeParser.Parse)
+                .FirstOrDefault()
+            : null;
 
         var assemblyName = assembly.GetName();
         var existing = _queries.GetPluginAssemblyByName(assemblyName.Name!);
@@ -117,7 +122,8 @@ public sealed class PluginRegistrationService
         record["version"] = assemblyName.Version?.ToString() ?? "1.0.0.0";
         record["publickeytoken"] = BitConverter.ToString(assemblyName.GetPublicKeyToken() ?? []).Replace("-", string.Empty).ToLowerInvariant();
         record["sourcetype"] = new OptionSetValue(0);
-        record["isolationmode"] = new OptionSetValue(firstAttribute.IsolationMode == IsolationModeEnum.Sandbox ? 2 : 1);
+        record["isolationmode"] = new OptionSetValue(
+            firstAttribute?.IsolationMode == IsolationModeEnum.Sandbox ? 2 : 1);
 
         Guid assemblyId;
         if (existing is null)
@@ -176,7 +182,9 @@ public sealed class PluginRegistrationService
         foreach (var pluginType in pluginTypes)
         {
             var attributeData = ReflectionHelper.GetRegistrationAttributes(pluginType).ToList();
-            if (attributeData.Count == 0)
+            var customApiData = ReflectionHelper.GetCustomApiRegistrationAttributes(pluginType).ToList();
+
+            if (attributeData.Count == 0 && customApiData.Count == 0)
             {
                 continue;
             }
@@ -187,17 +195,21 @@ public sealed class PluginRegistrationService
             foreach (var data in attributeData)
             {
                 var attribute = AttributeParser.Parse(data);
-                if (AttributeParser.IsCustomApiRegistration(attribute))
+                if (!AttributeParser.IsPluginStepRegistration(attribute))
                 {
-                    RegisterCustomApi(pluginType, pluginTypeId, attribute);
+                    continue;
                 }
-                else if (AttributeParser.IsPluginStepRegistration(attribute))
-                {
-                    var stepAttribute = PluginStepNameResolver.ApplyStepName(
-                        pluginType,
-                        _environmentResolver.ApplyProfileOverrides(attribute));
-                    RegisterStep(pluginType, pluginTypeId, existingSteps, stepAttribute);
-                }
+
+                var stepAttribute = PluginStepNameResolver.ApplyStepName(
+                    pluginType,
+                    _environmentResolver.ApplyStepOverrides(attribute));
+                RegisterStep(pluginType, pluginTypeId, existingSteps, stepAttribute);
+            }
+
+            foreach (var data in customApiData)
+            {
+                var attribute = CustomApiAttributeParser.Parse(data);
+                RegisterCustomApi(pluginType, pluginTypeId, attribute);
             }
 
             foreach (var step in existingSteps)
@@ -243,51 +255,15 @@ public sealed class PluginRegistrationService
 
     private void RegisterWorkflowActivityTypes(IEnumerable<Type> activityTypes, Guid assemblyId)
     {
-        var existingTypes = _queries.GetPluginTypes(assemblyId, isWorkflowActivity: true).ToDictionary(
-            t => t.GetAttributeValue<string>("typename")!,
-            t => t,
-            StringComparer.Ordinal);
-
-        foreach (var activityType in activityTypes)
-        {
-            var attribute = ReflectionHelper.GetRegistrationAttributes(activityType)
-                .Select(AttributeParser.Parse)
-                .FirstOrDefault();
-
-            if (attribute is null || !AttributeParser.IsWorkflowActivityRegistration(attribute))
-            {
-                continue;
-            }
-
-            var record = existingTypes.TryGetValue(activityType.FullName!, out var existing)
-                ? new Entity("plugintype", existing.Id)
-                : new Entity("plugintype");
-
-            record["name"] = attribute.Name;
-            record["typename"] = activityType.FullName;
-            record["friendlyname"] = string.IsNullOrWhiteSpace(attribute.FriendlyName)
-                ? Guid.NewGuid().ToString()
-                : attribute.FriendlyName;
-            record["workflowactivitygroupname"] = attribute.GroupName;
-            record["description"] = attribute.Description;
-            record["pluginassemblyid"] = new EntityReference("pluginassembly", assemblyId);
-
-            if (existing is null)
-            {
-                _trace.WriteLine("Registering workflow activity '{0}'", attribute.Name);
-                _service.Create(record);
-            }
-            else
-            {
-                _trace.WriteLine("Updating workflow activity '{0}'", attribute.Name);
-                _service.Update(record);
-            }
-        }
+        _ = activityTypes;
+        _ = assemblyId;
+        _trace.WriteLine(
+            "Workflow activity registration is not supported with the current attribute model.");
     }
 
-    private void RegisterCustomApi(Type pluginType, Guid pluginTypeId, CrmPluginRegistrationAttribute attribute)
+    private void RegisterCustomApi(Type pluginType, Guid pluginTypeId, CustomApiRegistration attribute)
     {
-        var profileOverride = _environmentResolver.GetCustomApiOverride(attribute.Message!);
+        var profileOverride = _environmentResolver.GetCustomApiOverride(attribute.UniqueName);
         var model = CustomApiAttributeReader.Read(pluginType, attribute, profileOverride);
         var customApiService = new CustomApiRegistrationService(_service, _trace)
         {
@@ -301,7 +277,7 @@ public sealed class PluginRegistrationService
         Type pluginType,
         Guid pluginTypeId,
         List<Entity> existingSteps,
-        CrmPluginRegistrationAttribute pluginStep)
+        PluginRegistrationAttribute pluginStep)
     {
         Entity? step = null;
         if (!string.IsNullOrWhiteSpace(pluginStep.Id) && Guid.TryParse(pluginStep.Id, out var stepId))
@@ -349,7 +325,6 @@ public sealed class PluginRegistrationService
 
         record["name"] = pluginStep.Name;
         record["configuration"] = pluginStep.UnSecureConfiguration;
-        record["description"] = pluginStep.Description;
         record["mode"] = new OptionSetValue(pluginStep.ExecutionMode == ExecutionModeEnum.Asynchronous ? 1 : 0);
         record["asyncautodelete"] = pluginStep.ExecutionMode == ExecutionModeEnum.Asynchronous && pluginStep.DeleteAsyncOperation;
         record["rank"] = pluginStep.ExecutionOrder;
@@ -357,7 +332,7 @@ public sealed class PluginRegistrationService
         record["supporteddeployment"] = new OptionSetValue(GetSupportedDeployment(pluginStep));
         record["plugintypeid"] = new EntityReference("plugintype", pluginTypeId);
         record["sdkmessageid"] = new EntityReference("sdkmessage", messageId);
-        record["filteringattributes"] = NormalizeCommaSeparated(pluginStep.FilteringAttributes);
+        record["filteringattributes"] = NormalizeCommaSeparated(pluginStep.FilteringAttributes ?? []);
 
         if (messageFilterId.HasValue)
         {
@@ -433,7 +408,7 @@ public sealed class PluginRegistrationService
         }
     }
 
-    private void RegisterImages(Guid stepId, Type pluginType, CrmPluginRegistrationAttribute pluginStep)
+    private void RegisterImages(Guid stepId, Type pluginType, PluginRegistrationAttribute pluginStep)
     {
         var existingImages = _queries.GetPluginStepImages(stepId);
 
@@ -451,7 +426,7 @@ public sealed class PluginRegistrationService
 
     private void RegisterImage(
         Guid stepId,
-        CrmPluginRegistrationAttribute pluginStep,
+        PluginRegistrationAttribute pluginStep,
         List<Entity> existingImages,
         string? imageName,
         ImageTypeEnum imageType,
@@ -487,19 +462,17 @@ public sealed class PluginRegistrationService
         }
     }
 
-    private static int GetSupportedDeployment(CrmPluginRegistrationAttribute pluginStep)
+    private static int GetSupportedDeployment(PluginRegistrationAttribute pluginStep)
+        => pluginStep.Server ? 0 : 0;
+
+    private static string? NormalizeCommaSeparated(string[] input)
     {
-        if (pluginStep.Server && pluginStep.Offline)
+        if (input.Length == 0)
         {
-            return 2;
+            return null;
         }
 
-        if (!pluginStep.Server && pluginStep.Offline)
-        {
-            return 1;
-        }
-
-        return 0;
+        return string.Join(",", input).Replace(" ", string.Empty);
     }
 
     private static string? NormalizeCommaSeparated(string? input)

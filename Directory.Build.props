@@ -11,12 +11,11 @@
     <Authors>PluginRegistrationTool</Authors>
     <Company>PluginRegistrationTool</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <!-- TODO: Update these URLs to your actual repository / project page before publishing -->
     <PackageProjectUrl>https://github.com/crstPawel/PluginRegistration</PackageProjectUrl>
     <RepositoryUrl>https://github.com/crstPawel/PluginRegistration</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>dataverse;dynamics365;power-platform;plugin;custom-api</PackageTags>
-    <Copyright>Copyright © PluginRegistrationTool</Copyright>
+    <Copyright>© 2026 Paweł Sobczak</Copyright>
 
     <!-- High quality packages -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>

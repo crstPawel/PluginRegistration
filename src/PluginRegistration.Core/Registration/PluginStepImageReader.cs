@@ -7,7 +7,7 @@ public static class PluginStepImageReader
 {
     public static IReadOnlyList<PluginStepImageModel> GetImages(
         Type pluginType,
-        CrmPluginRegistrationAttribute step)
+        PluginRegistrationAttribute step)
     {
         if (step.Stage is null)
         {
@@ -15,7 +15,7 @@ public static class PluginStepImageReader
         }
 
         return pluginType.GetCustomAttributesData()
-            .Where(data => data.AttributeType.Name == nameof(CrmPluginStepImageAttribute))
+            .Where(data => data.AttributeType.Name == nameof(PluginStepImageAttribute))
             .Select(Parse)
             .Where(image => MatchesStep(image, step))
             .Select(image => new PluginStepImageModel
@@ -27,49 +27,33 @@ public static class PluginStepImageReader
             .ToList();
     }
 
-    private static bool MatchesStep(ParsedStepImage image, CrmPluginRegistrationAttribute step)
+    private static bool MatchesStep(ParsedStepImage image, PluginRegistrationAttribute step)
     {
-        if (image.Stage != step.Stage)
+        return image.ImageType switch
         {
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(image.Message))
-        {
-            return true;
-        }
-
-        return string.Equals(image.Message, step.Message, StringComparison.OrdinalIgnoreCase);
+            ImageTypeEnum.PreImage => step.Stage is StageEnum.PreValidation or StageEnum.PreOperation,
+            ImageTypeEnum.PostImage => step.Stage == StageEnum.PostOperation,
+            ImageTypeEnum.Both => true,
+            _ => false
+        };
     }
 
     private static ParsedStepImage Parse(CustomAttributeData data)
     {
         var arguments = data.ConstructorArguments.ToArray();
-        var image = new ParsedStepImage
+
+        return new ParsedStepImage
         {
-            Stage = (StageEnum)Enum.ToObject(typeof(StageEnum), (int)arguments[0].Value!),
-            Name = (string)arguments[1].Value!,
-            ImageType = (ImageTypeEnum)Enum.ToObject(typeof(ImageTypeEnum), (int)arguments[2].Value!),
-            Attributes = (string?)arguments[3].Value
+            Name = (string)arguments[0].Value!,
+            ImageType = (ImageTypeEnum)Enum.ToObject(typeof(ImageTypeEnum), (int)arguments[1].Value!),
+            Attributes = (string)arguments[2].Value!
         };
-
-        foreach (var namedArgument in data.NamedArguments)
-        {
-            if (namedArgument.MemberName == nameof(CrmPluginStepImageAttribute.Message))
-            {
-                image.Message = (string?)namedArgument.TypedValue.Value;
-            }
-        }
-
-        return image;
     }
 
     private sealed class ParsedStepImage
     {
-        public StageEnum Stage { get; init; }
         public string Name { get; init; } = string.Empty;
         public ImageTypeEnum ImageType { get; init; }
-        public string? Attributes { get; init; }
-        public string? Message { get; set; }
+        public string Attributes { get; init; } = string.Empty;
     }
 }

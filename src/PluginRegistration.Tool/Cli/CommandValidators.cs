@@ -1,4 +1,8 @@
+using System;
+using System.Collections.Generic;
 using System.CommandLine;
+using System.IO;
+using System.Linq;
 
 namespace PluginRegistration.Tool.Cli;
 
@@ -7,7 +11,6 @@ internal static class CommandValidators
     public static void AddDeployValidators(
         Command command,
         Option<DirectoryInfo> pathOption,
-        Option<string?> profileOption,
         Option<string?> connectionOption)
     {
         command.AddValidator(result =>
@@ -17,11 +20,6 @@ internal static class CommandValidators
             if (!PathValidation.TryValidateConfigFile(result.GetValueForOption(pathOption), out var pathError))
             {
                 errors.Add(pathError);
-            }
-
-            if (string.IsNullOrWhiteSpace(result.GetValueForOption(profileOption)))
-            {
-                errors.Add("Profile is required. Provide --profile / -pr (for example: dev, test, prod).");
             }
 
             if (!ConnectionValidation.TryValidate(result.GetValueForOption(connectionOption), out var connectionError))
@@ -75,8 +73,7 @@ internal static class CommandValidators
 
     public static void AddInitValidators(
         Command command,
-        Option<DirectoryInfo> pathOption,
-        Option<string> profilesOption)
+        Option<DirectoryInfo> pathOption)
     {
         command.AddValidator(result =>
         {
@@ -85,16 +82,6 @@ internal static class CommandValidators
             if (!PathValidation.TryValidateDirectory(result.GetValueForOption(pathOption), out var pathError))
             {
                 errors.Add(pathError);
-            }
-
-            var profiles = result.GetValueForOption(profilesOption)?
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(profile => !string.IsNullOrWhiteSpace(profile))
-                .ToArray();
-
-            if (profiles is null || profiles.Length == 0)
-            {
-                errors.Add("At least one profile is required. Provide --profiles (for example: dev,test,prod).");
             }
 
             if (errors.Count > 0)

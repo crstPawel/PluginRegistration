@@ -1,7 +1,11 @@
+using System;
+using System.Collections.Generic;
 using System.CommandLine;
 using System.CommandLine.Help;
 using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
+using System.IO;
+using System.Linq;
 
 namespace PluginRegistration.Tool.Cli;
 
