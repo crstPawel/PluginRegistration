@@ -46,10 +46,18 @@ dotnet tool install --global PluginRegistration.Tool --version 1.0.3 --add-sourc
 From NuGet.org or a private feed:
 
 ```bash
-dotnet tool install --global PluginRegistration.Tool --version 1.0.3
+dotnet tool install --global PluginRegistration.Tool --version 2.0.1
 # private feed:
-dotnet tool install --global PluginRegistration.Tool --version 1.0.3 --add-source <feed-url>
+dotnet tool install --global PluginRegistration.Tool --version 2.0.1 --add-source <feed-url>
 ```
+
+If install fails with `NU3034` (package signature validation), update trusted nuget.org certificates:
+
+```powershell
+dotnet nuget trust repository nuget.org all
+```
+
+Details: [troubleshooting.md](troubleshooting.md#nu3034--package-signing-on-windows).
 
 Then from any directory:
 

@@ -48,9 +48,9 @@ jobs:
         run: |
           PACK_VERSION="${{ steps.version.outputs.version }}"
           if [ -n "$PACK_VERSION" ]; then
-            dotnet pack --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:Version="$PACK_VERSION" /p:ContinuousIntegrationBuild=true
+            dotnet pack PluginRegistrationTool.slnx --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:Version="$PACK_VERSION" /p:ContinuousIntegrationBuild=true
           else
-            dotnet pack --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:ContinuousIntegrationBuild=true
+            dotnet pack PluginRegistrationTool.slnx --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:ContinuousIntegrationBuild=true
           fi
 
       - name: List generated packages
