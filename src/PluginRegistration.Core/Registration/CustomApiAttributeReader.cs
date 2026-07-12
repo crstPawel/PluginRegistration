@@ -8,31 +8,29 @@ public static class CustomApiAttributeReader
 {
     public static CustomApiRegistrationModel Read(
         Type pluginType,
-        PluginRegistrationAttribute attribute,
+        CustomApiRegistration attribute,
         CustomApiDefinition? profileOverride = null)
     {
-        if (string.IsNullOrWhiteSpace(attribute.Message))
+        if (string.IsNullOrWhiteSpace(attribute.UniqueName))
         {
             throw new PluginRegistrationException(
                 $"Custom API unique name is required on type '{pluginType.FullName}'.");
         }
 
-        var customApiCount = ReflectionHelper.GetRegistrationAttributes(pluginType)
-            .Select(AttributeParser.Parse)
-            .Count(AttributeParser.IsCustomApiRegistration);
+        var customApiCount = ReflectionHelper.GetCustomApiRegistrationAttributes(pluginType).Count();
         var hasMultipleCustomApis = customApiCount > 1;
 
         var requestParameters = pluginType.GetCustomAttributesData()
             .Where(data => data.AttributeType.Name == nameof(CustomApiRequestParameterAttribute))
             .Select(ParseRequestParameter)
-            .Where(parameter => MatchesCustomApi(parameter.ApiUniqueName, attribute.Message!, hasMultipleCustomApis, pluginType))
+            .Where(parameter => MatchesCustomApi(parameter.ApiUniqueName, attribute.UniqueName, hasMultipleCustomApis, pluginType))
             .OrderBy(parameter => parameter.UniqueName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var responseProperties = pluginType.GetCustomAttributesData()
             .Where(data => data.AttributeType.Name == nameof(CustomApiResponsePropertyAttribute))
             .Select(ParseResponseProperty)
-            .Where(property => MatchesCustomApi(property.ApiUniqueName, attribute.Message!, hasMultipleCustomApis, pluginType))
+            .Where(property => MatchesCustomApi(property.ApiUniqueName, attribute.UniqueName, hasMultipleCustomApis, pluginType))
             .OrderBy(property => property.UniqueName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -40,17 +38,17 @@ public static class CustomApiAttributeReader
 
         var model = new CustomApiRegistrationModel
         {
-            UniqueName = attribute.Message,
+            UniqueName = attribute.UniqueName,
             PluginTypeName = pluginType.FullName!,
-            DisplayName = string.IsNullOrWhiteSpace(attribute.FriendlyName)
-                ? attribute.Message
-                : attribute.FriendlyName,
+            DisplayName = string.IsNullOrWhiteSpace(attribute.DisplayName)
+                ? attribute.UniqueName
+                : attribute.DisplayName,
             Description = attribute.Description,
             BindingType = attribute.CustomApiBindingType,
             IsFunction = attribute.IsFunction,
             IsPrivate = attribute.IsPrivate,
             BoundEntityLogicalName = attribute.BoundEntityLogicalName,
-            AllowedCustomProcessingStepType = attribute.AllowedCustomProcessingStepType,
+            AllowedCustomProcessingStepType = attribute.ProcessingStepType,
             RequestParameters = requestParameters,
             ResponseProperties = responseProperties
         };

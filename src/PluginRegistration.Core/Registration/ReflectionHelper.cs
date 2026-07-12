@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.Loader;
+using PluginRegistration.Attributes;
 
 namespace PluginRegistration.Core.Registration;
 
@@ -83,10 +84,16 @@ public static class ReflectionHelper
         return false;
     }
 
+    public static IEnumerable<CustomAttributeData> GetCustomApiRegistrationAttributes(Type type)
+    {
+        return type.GetCustomAttributesData()
+            .Where(attribute => attribute.AttributeType.Name == nameof(CustomApiRegistration));
+    }
+
     public static IEnumerable<CustomAttributeData> GetRegistrationAttributes(Type type)
     {
         var attributes = type.GetCustomAttributesData()
-            .Where(a => a.AttributeType.Name == "PluginRegistrationAttribute")
+            .Where(a => a.AttributeType.Name == nameof(PluginRegistrationAttribute))
             .ToList();
 
         var duplicateNames = attributes

@@ -10,17 +10,7 @@ public static class AttributeCodeGenerator
         string indentation = "    ",
         string? pluginTypeName = null)
     {
-        if (AttributeParser.IsPluginStepRegistration(attribute))
-        {
-            return GeneratePluginStep(attribute, indentation, pluginTypeName);
-        }
-
-        if (AttributeParser.IsCustomApiRegistration(attribute))
-        {
-            return $"{indentation}[PluginRegistration(\"{attribute.Message}\")]";
-        }
-
-        return GenerateWorkflowActivity(attribute, indentation);
+        return GeneratePluginStep(attribute, indentation, pluginTypeName);
     }
 
     private static string GeneratePluginStep(
@@ -28,11 +18,11 @@ public static class AttributeCodeGenerator
         string indentation,
         string? pluginTypeName)
     {
-        var extras = BuildNamedParameters(attribute, indentation, includeDescription: true, pluginTypeName);
+        var extras = BuildNamedParameters(attribute, indentation, pluginTypeName);
 
-        // Prefer MessageTypeEnum when the message is one of the common types
-        string messagePart = TryFormatAsMessageTypeEnum(attribute.Message)
-            ?? $"\"{attribute.Message}\"";
+        var messagePart = TryFormatAsMessageTypeEnum(attribute.Message)
+            ?? throw new PluginRegistrationException(
+                $"Cannot generate code for unknown message '{attribute.Message}'. Add it to MessageTypeEnum.");
 
         return string.Format(
             "{8}[PluginRegistration({8}{0}, {8}\"{1}\", StageEnum.{2}, ExecutionModeEnum.{3},{8}{4}, {5}{6}{8})]",
@@ -49,61 +39,33 @@ public static class AttributeCodeGenerator
     private static string? TryFormatAsMessageTypeEnum(string? message)
     {
         if (string.IsNullOrWhiteSpace(message))
+        {
             return null;
+        }
 
-        // Common messages that have a corresponding value in MessageTypeEnum
-        return message switch
-        {
-            "Create" => "MessageTypeEnum.Create",
-            "Update" => "MessageTypeEnum.Update",
-            "Delete" => "MessageTypeEnum.Delete",
-            "Retrieve" => "MessageTypeEnum.Retrieve",
-            "RetrieveMultiple" => "MessageTypeEnum.RetrieveMultiple",
-            _ => null
-        };
+        return Enum.TryParse<MessageTypeEnum>(message, true, out var messageType)
+            ? $"MessageTypeEnum.{messageType}"
+            : null;
     }
 
-    private static string FormatFilteringAttributesForCode(string? filteringAttributes)
+    private static string FormatFilteringAttributesForCode(string[] filteringAttributes)
     {
-        if (string.IsNullOrWhiteSpace(filteringAttributes))
+        if (filteringAttributes.Length == 0)
         {
-            return "\"\"";
+            return "[]";
         }
 
-        var parts = filteringAttributes
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        if (parts.Length == 0)
+        if (filteringAttributes.Length == 1)
         {
-            return "\"\"";
+            return $"[\"{filteringAttributes[0]}\"]";
         }
 
-        if (parts.Length == 1)
-        {
-            return $"\"{parts[0]}\"";
-        }
-
-        return $"new[] {{ {string.Join(", ", parts.Select(part => $"\"{part}\""))} }}";
-    }
-
-    private static string GenerateWorkflowActivity(PluginRegistrationAttribute attribute, string indentation)
-    {
-        var extras = BuildNamedParameters(attribute, indentation, includeDescription: false);
-        return string.Format(
-            "{6}[PluginRegistration({6}\"{0}\", \"{1}\",\"{2}\",\"{3}\",IsolationModeEnum.{4}{5}{6})]",
-            attribute.Name,
-            attribute.FriendlyName,
-            attribute.Description,
-            attribute.GroupName,
-            attribute.IsolationMode,
-            extras,
-            indentation);
+        return $"new[] {{ {string.Join(", ", filteringAttributes.Select(part => $"\"{part}\""))} }}";
     }
 
     private static string BuildNamedParameters(
         PluginRegistrationAttribute attribute,
         string indentation,
-        bool includeDescription,
         string? pluginTypeName = null)
     {
         var extras = string.Empty;
@@ -117,16 +79,6 @@ public static class AttributeCodeGenerator
                 StringComparison.Ordinal))
         {
             extras += $"{indentation},Name = \"{attribute.Name}\"";
-        }
-
-        if (includeDescription && !string.IsNullOrWhiteSpace(attribute.Description))
-        {
-            extras += $"{indentation},Description = \"{attribute.Description}\"";
-        }
-
-        if (attribute.Offline)
-        {
-            extras += $"{indentation},Offline = {attribute.Offline.ToString().ToLowerInvariant()}";
         }
 
         if (!attribute.Server)

@@ -5,20 +5,23 @@ namespace PluginRegistration.Core.Registration;
 
 internal static class FilteringAttributesParser
 {
-    public static string Parse(CustomAttributeTypedArgument argument)
+    public static string[] ParseArray(CustomAttributeTypedArgument argument)
     {
         if (argument.Value is string text)
         {
-            return text;
+            return string.IsNullOrWhiteSpace(text) ? [] : [text];
         }
 
         if (argument.ArgumentType.IsArray && argument.ArgumentType.GetElementType() == typeof(string))
         {
-            return Join(ExtractStringArray(argument.Value));
+            return ExtractStringArray(argument.Value);
         }
 
-        return string.Empty;
+        return [];
     }
+
+    public static string Parse(CustomAttributeTypedArgument argument)
+        => Join(ParseArray(argument));
 
     private static string Join(IEnumerable<string> filteringAttributes)
     {

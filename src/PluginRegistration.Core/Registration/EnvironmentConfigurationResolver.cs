@@ -60,11 +60,6 @@ public sealed class EnvironmentConfigurationResolver
             attribute.SecureConfiguration = ExpandEnvironmentVariables(stepOverride.SecureConfiguration);
         }
 
-        if (stepOverride.Description is not null)
-        {
-            attribute.Description = ExpandEnvironmentVariables(stepOverride.Description);
-        }
-
         return attribute;
     }
 

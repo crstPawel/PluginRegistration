@@ -7,131 +7,52 @@ public static class AttributeParser
 {
     public static PluginRegistrationAttribute Parse(CustomAttributeData data)
     {
-        PluginRegistrationAttribute? attribute = null;
         var arguments = data.ConstructorArguments.ToArray();
 
-        if (arguments.Length == 6 && arguments[0].ArgumentType.Name == "MessageTypeEnum")
+        if (arguments.Length != 6 || arguments[0].ArgumentType.Name != nameof(MessageTypeEnum))
         {
-            // Preferred style using MessageTypeEnum
-            attribute = CreatePluginStepAttribute(
-                ((MessageTypeEnum)Enum.ToObject(typeof(MessageTypeEnum), (int)arguments[0].Value!)).ToString(),
-                (string)arguments[1].Value!,
-                (StageEnum)Enum.ToObject(typeof(StageEnum), (int)arguments[2].Value!),
-                (ExecutionModeEnum)Enum.ToObject(typeof(ExecutionModeEnum), (int)arguments[3].Value!),
-                arguments[4],
-                (int)arguments[5].Value!);
+            throw new PluginRegistrationException(
+                "Unsupported PluginRegistration attribute constructor. Use MessageTypeEnum as the first parameter for plugin steps.");
         }
-        else if (arguments.Length == 6 && arguments[0].ArgumentType.Name == "MessageNameEnum")
-        {
-            attribute = CreatePluginStepAttribute(
-                ((MessageNameEnum)Enum.ToObject(typeof(MessageNameEnum), (int)arguments[0].Value!)).ToString(),
-                (string)arguments[1].Value!,
-                (StageEnum)Enum.ToObject(typeof(StageEnum), (int)arguments[2].Value!),
-                (ExecutionModeEnum)Enum.ToObject(typeof(ExecutionModeEnum), (int)arguments[3].Value!),
-                arguments[4],
-                (int)arguments[5].Value!);
-        }
-        else if (arguments.Length == 5 && arguments[0].ArgumentType.Name == "String")
-        {
-            attribute = new PluginRegistrationAttribute(
-                (string)arguments[0].Value!,
-                (string)arguments[1].Value!,
-                (string)arguments[2].Value!,
-                (string)arguments[3].Value!,
-                (IsolationModeEnum)Enum.ToObject(typeof(IsolationModeEnum), (int)arguments[4].Value!));
-        }
-        else if (arguments.Length == 1 && arguments[0].ArgumentType.Name == "String")
-        {
-            attribute = new PluginRegistrationAttribute((string)arguments[0].Value!);
-        }
-        else
-        {
-            throw new PluginRegistrationException("Unsupported PluginRegistration attribute constructor. Use MessageTypeEnum (recommended) as the first parameter for plugin steps, or MessageNameEnum for advanced messages.");
-        }
+
+        var attribute = PluginRegistrationAttribute.CreateStep(
+            (MessageTypeEnum)Enum.ToObject(typeof(MessageTypeEnum), (int)arguments[0].Value!),
+            (string)arguments[1].Value!,
+            (StageEnum)Enum.ToObject(typeof(StageEnum), (int)arguments[2].Value!),
+            (ExecutionModeEnum)Enum.ToObject(typeof(ExecutionModeEnum), (int)arguments[3].Value!),
+            FilteringAttributesParser.ParseArray(arguments[4]),
+            (int)arguments[5].Value!);
 
         foreach (var namedArgument in data.NamedArguments)
         {
             switch (namedArgument.MemberName)
             {
-                case "Id":
+                case nameof(PluginRegistrationAttribute.Id):
                     attribute.Id = (string?)namedArgument.TypedValue.Value;
                     break;
-                case "Name":
+                case nameof(PluginRegistrationAttribute.Name):
                     attribute.Name = (string?)namedArgument.TypedValue.Value;
                     break;
-                case "FriendlyName":
-                    attribute.FriendlyName = (string?)namedArgument.TypedValue.Value;
-                    break;
-                case "GroupName":
-                    attribute.GroupName = (string?)namedArgument.TypedValue.Value;
-                    break;
-                case "Description":
-                    attribute.Description = (string?)namedArgument.TypedValue.Value;
-                    break;
-                case "DeleteAsyncOperation":
+                case nameof(PluginRegistrationAttribute.DeleteAsyncOperation):
                     attribute.DeleteAsyncOperation = (bool)namedArgument.TypedValue.Value!;
                     break;
-                case "UnSecureConfiguration":
+                case nameof(PluginRegistrationAttribute.UnSecureConfiguration):
                     attribute.UnSecureConfiguration = (string?)namedArgument.TypedValue.Value;
                     break;
-                case "SecureConfiguration":
+                case nameof(PluginRegistrationAttribute.SecureConfiguration):
                     attribute.SecureConfiguration = (string?)namedArgument.TypedValue.Value;
                     break;
-                case "Offline":
-                    attribute.Offline = (bool)namedArgument.TypedValue.Value!;
-                    break;
-                case "Server":
+                case nameof(PluginRegistrationAttribute.Server):
                     attribute.Server = (bool)namedArgument.TypedValue.Value!;
                     break;
-                case "Action":
+                case nameof(PluginRegistrationAttribute.Action):
                     attribute.Action = (PluginStepOperationEnum)namedArgument.TypedValue.Value!;
-                    break;
-                case "CustomApiBindingType":
-                    attribute.CustomApiBindingType = (CustomApiBindingTypeEnum)namedArgument.TypedValue.Value!;
-                    break;
-                case "IsFunction":
-                    attribute.IsFunction = (bool)namedArgument.TypedValue.Value!;
-                    break;
-                case "IsPrivate":
-                    attribute.IsPrivate = (bool)namedArgument.TypedValue.Value!;
-                    break;
-                case "BoundEntityLogicalName":
-                    attribute.BoundEntityLogicalName = (string?)namedArgument.TypedValue.Value;
-                    break;
-                case "AllowedCustomProcessingStepType":
-                    attribute.AllowedCustomProcessingStepType =
-                        (CustomApiProcessingStepTypeEnum)namedArgument.TypedValue.Value!;
                     break;
             }
         }
 
         return attribute;
     }
-
-    private static PluginRegistrationAttribute CreatePluginStepAttribute(
-        string message,
-        string entityLogicalName,
-        StageEnum stage,
-        ExecutionModeEnum executionMode,
-        CustomAttributeTypedArgument filteringAttributesArgument,
-        int executionOrder)
-    {
-        var filteringAttributes = FilteringAttributesParser.Parse(filteringAttributesArgument);
-
-        return PluginRegistrationAttribute.CreateStep(
-            message,
-            entityLogicalName,
-            stage,
-            executionMode,
-            filteringAttributes,
-            executionOrder);
-    }
-
-    public static bool IsCustomApiRegistration(PluginRegistrationAttribute attribute)
-        => attribute.Name is null && attribute.Message is not null && attribute.Stage is null;
-
-    public static bool IsWorkflowActivityRegistration(PluginRegistrationAttribute attribute)
-        => attribute.Stage is null && attribute.Name is not null && attribute.FriendlyName is not null;
 
     public static bool IsPluginStepRegistration(PluginRegistrationAttribute attribute)
         => attribute.Stage is not null;

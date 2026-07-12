@@ -1,12 +1,11 @@
 using Microsoft.Xrm.Sdk;
-using Microsoft.Xrm.Sdk.Query;
 using PluginRegistration.Attributes;
 using PluginRegistration.Core.Registration;
 
 namespace PluginRegistration.Core.Sync;
 
 /// <summary>
-/// Downloads plugin step metadata from Dataverse and writes PluginRegistration attributes into source code.
+/// Downloads plugin step metadata from Dataverse and writes registration attributes into source code.
 /// </summary>
 public sealed class MetadataSyncService
 {
@@ -135,7 +134,6 @@ public sealed class MetadataSyncService
 
             attribute.Id = step.Id.ToString();
             attribute.DeleteAsyncOperation = step.GetAttributeValue<bool?>("asyncautodelete") ?? false;
-            attribute.Description = step.GetAttributeValue<string>("description");
             attribute.UnSecureConfiguration = step.GetAttributeValue<string>("configuration");
 
             if (!string.Equals(stepName, defaultStepName, StringComparison.Ordinal))
@@ -145,7 +143,7 @@ public sealed class MetadataSyncService
 
             var stepImages = ReadStepImages(step.Id);
             parser.AddAttribute(attribute, className);
-            parser.AddStepImageAttributes(stageEnum, messageName, stepImages, className);
+            parser.AddStepImageAttributes(stepImages, className);
         }
 
         AddCustomApiAttributes(parser, className);
@@ -159,18 +157,37 @@ public sealed class MetadataSyncService
         foreach (var details in customApis)
         {
             var api = details.Api;
-            var attribute = new PluginRegistrationAttribute(api.GetAttributeValue<string>("uniquename")!)
-            {
-                FriendlyName = api.GetAttributeValue<string>("displayname"),
-                Description = api.GetAttributeValue<string>("description"),
-                CustomApiBindingType = (CustomApiBindingTypeEnum)(api.GetAttributeValue<OptionSetValue>("bindingtype")?.Value ?? 0),
-                BoundEntityLogicalName = api.GetAttributeValue<string>("boundentitylogicalname"),
-                IsFunction = api.GetAttributeValue<bool>("isfunction"),
-                IsPrivate = api.GetAttributeValue<bool>("isprivate"),
-                AllowedCustomProcessingStepType = (CustomApiProcessingStepTypeEnum)(api.GetAttributeValue<OptionSetValue>("allowedcustomprocessingsteptype")?.Value ?? 0)
-            };
+            var uniqueName = api.GetAttributeValue<string>("uniquename")!;
+            var displayName = api.GetAttributeValue<string>("displayname") ?? uniqueName;
+            var bindingType = (CustomApiBindingTypeEnum)(api.GetAttributeValue<OptionSetValue>("bindingtype")?.Value ?? 0);
+            var processingStepType = (CustomApiProcessingStepTypeEnum)(api.GetAttributeValue<OptionSetValue>("allowedcustomprocessingsteptype")?.Value ?? 0);
+            var boundEntityLogicalName = api.GetAttributeValue<string>("boundentitylogicalname") ?? string.Empty;
 
-            var apiUniqueName = api.GetAttributeValue<string>("uniquename")!;
+            CustomApiRegistration attribute;
+            if (bindingType != CustomApiBindingTypeEnum.Global
+                || processingStepType != CustomApiProcessingStepTypeEnum.None
+                || !string.IsNullOrWhiteSpace(boundEntityLogicalName))
+            {
+                attribute = new CustomApiRegistration(
+                    uniqueName,
+                    displayName,
+                    processingStepType,
+                    bindingType,
+                    boundEntityLogicalName);
+            }
+            else if (!string.Equals(displayName, uniqueName, StringComparison.Ordinal))
+            {
+                attribute = new CustomApiRegistration(uniqueName, displayName);
+            }
+            else
+            {
+                attribute = new CustomApiRegistration(uniqueName);
+            }
+
+            attribute.Description = api.GetAttributeValue<string>("description");
+            attribute.IsFunction = api.GetAttributeValue<bool>("isfunction");
+            attribute.IsPrivate = api.GetAttributeValue<bool>("isprivate");
+
             var requestParameters = details.RequestParameters
                 .Select(parameter => new CustomApiParameterModel
                 {
@@ -180,7 +197,7 @@ public sealed class MetadataSyncService
                     Type = (CustomApiParameterTypeEnum)(parameter.GetAttributeValue<OptionSetValue>("type")?.Value ?? 10),
                     IsRequired = !parameter.GetAttributeValue<bool>("isoptional"),
                     EntityLogicalName = parameter.GetAttributeValue<string>("logicalentityname"),
-                    ApiUniqueName = hasMultipleCustomApis ? apiUniqueName : null
+                    ApiUniqueName = hasMultipleCustomApis ? uniqueName : null
                 })
                 .ToList();
 
@@ -192,7 +209,7 @@ public sealed class MetadataSyncService
                     Description = property.GetAttributeValue<string>("description"),
                     Type = (CustomApiParameterTypeEnum)(property.GetAttributeValue<OptionSetValue>("type")?.Value ?? 10),
                     EntityLogicalName = property.GetAttributeValue<string>("logicalentityname"),
-                    ApiUniqueName = hasMultipleCustomApis ? apiUniqueName : null
+                    ApiUniqueName = hasMultipleCustomApis ? uniqueName : null
                 })
                 .ToList();
 
@@ -214,27 +231,13 @@ public sealed class MetadataSyncService
 
     private void AddWorkflowAttributes(CodeParser parser, string className)
     {
-        var pluginType = _queries.GetPluginTypeByTypeName(className);
-        if (pluginType is null)
-        {
-            return;
-        }
-
-        var isolationMode = _queries.GetAssemblyIsolationMode(pluginType.Id);
-        var attribute = new PluginRegistrationAttribute(
-            pluginType.GetAttributeValue<string>("name")!,
-            pluginType.GetAttributeValue<string>("friendlyname")!,
-            pluginType.GetAttributeValue<string>("description") ?? string.Empty,
-            pluginType.GetAttributeValue<string>("workflowactivitygroupname") ?? string.Empty,
-            isolationMode?.Value == 2 ? IsolationModeEnum.Sandbox : IsolationModeEnum.None);
-
-        parser.AddAttribute(attribute, className);
+        _ = parser;
+        _ = className;
+        _trace.WriteLine(
+            "Skipping workflow activity '{0}' - workflow registration attributes are no longer supported.",
+            className);
     }
 
-    /// <summary>
-    /// Creates a PluginRegistrationAttribute preferring MessageTypeEnum when the message is one of the known common types.
-    /// Falls back to MessageNameEnum for other messages.
-    /// </summary>
     private static PluginRegistrationAttribute CreatePluginRegistrationAttribute(
         string messageName,
         string entityLogicalName,
@@ -243,34 +246,23 @@ public sealed class MetadataSyncService
         string filteringAttributes,
         int rank)
     {
-        if (Enum.TryParse<MessageTypeEnum>(messageName, true, out var messageType))
+        if (!Enum.TryParse<MessageTypeEnum>(messageName, true, out var messageType))
         {
-            return new PluginRegistrationAttribute(
-                messageType,
-                entityLogicalName,
-                stage,
-                executionMode,
-                filteringAttributes,
-                rank);
+            throw new PluginRegistrationException(
+                $"Unknown message '{messageName}'. Add it to MessageTypeEnum before syncing this step.");
         }
 
-        // Fallback to MessageNameEnum for less common / custom messages
-        if (Enum.TryParse<MessageNameEnum>(messageName, true, out var messageNameEnum))
-        {
-#pragma warning disable CS0618
-            return new PluginRegistrationAttribute(
-                messageNameEnum,
-                entityLogicalName,
-                stage,
-                executionMode,
-                filteringAttributes,
-                rank);
-#pragma warning restore CS0618
-        }
+        var filteringArray = string.IsNullOrWhiteSpace(filteringAttributes)
+            ? []
+            : filteringAttributes
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        // For truly unknown messages, fall back to MessageNameEnum by name (will be stored as string internally)
-        // This should be rare. We use the MessageNameEnum path as closest.
-        throw new PluginRegistrationException(
-            $"Unknown message '{messageName}'. Consider adding it to MessageTypeEnum or using the tool with full MessageNameEnum support.");
+        return PluginRegistrationAttribute.CreateStep(
+            messageType,
+            entityLogicalName,
+            stage,
+            executionMode,
+            filteringArray,
+            rank);
     }
 }

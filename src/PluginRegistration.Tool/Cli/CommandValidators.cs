@@ -1,4 +1,8 @@
+using System;
+using System.Collections.Generic;
 using System.CommandLine;
+using System.IO;
+using System.Linq;
 
 namespace PluginRegistration.Tool.Cli;
 

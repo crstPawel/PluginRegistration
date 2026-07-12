@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace PluginRegistration.Tool.Cli;
 
 internal static class PathValidation
