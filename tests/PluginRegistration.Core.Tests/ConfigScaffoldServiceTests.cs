@@ -20,42 +20,37 @@ public sealed class ConfigScaffoldServiceTests
         var config = JsonConvert.DeserializeObject<PluginRegistrationConfig>(File.ReadAllText(outputPath))
             ?? throw new InvalidOperationException("Failed to deserialize generated config.");
 
-        var devProfile = config.Profiles["dev"];
-
         Assert.Equal(
             new[]
             {
-                "Sample.Plugins.AccountCreatePlugin.PreOperation",
+                "Sample.Plugins.AccountCreatePlugin.PostOperation",
                 "Sample.Plugins.AccountLifecyclePlugin.PostOperation",
                 "Sample.Plugins.AccountLifecyclePlugin.PreOperation"
             },
-            devProfile.StepOverrides.Keys.OrderBy(name => name, StringComparer.Ordinal).ToArray());
+            config.StepOverrides.Keys.OrderBy(name => name, StringComparer.Ordinal).ToArray());
 
-        foreach (var stepName in devProfile.StepOverrides.Keys)
+        foreach (var stepName in config.StepOverrides.Keys)
         {
-            Assert.Equal(string.Empty, devProfile.StepOverrides[stepName].UnSecureConfiguration);
+            Assert.Equal(string.Empty, config.StepOverrides[stepName].UnSecureConfiguration);
         }
 
-        Assert.Equal(3, devProfile.CustomApis.Count);
+        Assert.Equal(4, config.CustomApis.Count);
 
-        var processAccount = devProfile.CustomApis.Single(api =>
+        var processAccount = config.CustomApis.Single(api =>
             string.Equals(api.UniqueName, "sample_ProcessAccount", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("Process Account", processAccount.DisplayName);
         Assert.Equal("Sample.Plugins.ProcessAccountCustomApiPlugin", processAccount.PluginTypeName);
         Assert.True(processAccount.CreateIfMissing);
 
-        var validateAccount = devProfile.CustomApis.Single(api =>
+        var validateAccount = config.CustomApis.Single(api =>
             string.Equals(api.UniqueName, "sample_ValidateAccount", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("Validate Account", validateAccount.DisplayName);
         Assert.Equal("Sample.Plugins.MultiCustomApiPlugin", validateAccount.PluginTypeName);
 
-        var enrichAccount = devProfile.CustomApis.Single(api =>
+        var enrichAccount = config.CustomApis.Single(api =>
             string.Equals(api.UniqueName, "sample_EnrichAccount", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("Enrich Account", enrichAccount.DisplayName);
         Assert.Equal("Sample.Plugins.MultiCustomApiPlugin", enrichAccount.PluginTypeName);
-
-        Assert.All(config.Profiles["test"].CustomApis, api => Assert.False(api.CreateIfMissing));
-        Assert.All(config.Profiles["prod"].CustomApis, api => Assert.False(api.CreateIfMissing));
     }
 
     [Fact]
@@ -69,7 +64,6 @@ public sealed class ConfigScaffoldServiceTests
             ?? throw new InvalidOperationException("Failed to deserialize generated config.");
 
         Assert.Single(config.Plugins);
-        Assert.Equal("dev,test,prod", config.Plugins[0].Profile);
         Assert.Equal("bin/Release", config.Plugins[0].AssemblyPath);
         Assert.Equal("SampleSolution", config.Plugins[0].Solution);
     }
@@ -81,7 +75,6 @@ public sealed class ConfigScaffoldServiceTests
 
         return service.Generate(
             workingDirectory,
-            ["dev", "test", "prod"],
             assemblyPath: "bin/Release",
             solution: "SampleSolution");
     }

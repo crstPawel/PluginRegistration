@@ -1,65 +1,87 @@
-# Sync — synchronizacja metadanych do kodu źródłowego
+# Sync — synchronizing metadata into source code
 
-Ten dokument opisuje, jak działa komenda `pluginreg sync`: od połączenia z Dataverse do zapisania atrybutów rejestracji w plikach `.cs`.
+This document describes how the `pluginreg sync` command works: from connecting to Dataverse to writing registration attributes in `.cs` files.
 
-**Ważne:** `sync` to operacja **odwrotna do `deploy`** w zakresie atrybutów:
+CLI options and examples: [cli.md](cli.md). Getting started: [getting-started.md](getting-started.md).
 
-- **nie wgrywa** DLL do Dataverse;
-- **nie tworzy** ani nie aktualizuje `pluginregistration.json`;
-- **nadpisuje** atrybuty `[CrmPluginRegistration]`, `[CrmPluginStepImage]`, `[CrmCustomApiRequestParameter]` i `[CrmCustomApiResponseProperty]` w kodzie na podstawie aktualnego stanu w środowisku.
+## Separate tool and plugin repositories
 
-Służy do aktualizacji atrybutów w kodzie na podstawie stanu w Dataverse.
+The tool and plugin code **can live in different folders**. Point `sync` at the plugin source tree:
+
+```bash
+dotnet run --project /path/to/PluginRegistrationTool/src/PluginRegistration.Tool -- \
+  sync --path /path/to/MyCrmPlugins/src/MyCompany.Plugins
+```
+
+Requirements:
+
+1. Plugin classes in `.cs` files (including `BasePlugin : IPlugin` inheritance chains)
+2. Types **already registered** in the connected Dataverse environment
+3. `namespace.class` in code must equal `plugintype.typename`
+
+`sync` does **not** require `pluginregistration.json`.
+
+After sync, optionally run `init` in the plugin project to scaffold deploy configuration.
 
 ---
 
-## Przegląd przepływu
+**Important:** `sync` is the **inverse of `deploy`** for attributes:
+
+- **does not upload** DLLs to Dataverse;
+- **does not create** or update `pluginregistration.json`;
+- **overwrites** `[PluginRegistration]`, `[CustomApiRegistration]`, `[PluginStepImage]`, `[CustomApiRequestParameter]`, and `[CustomApiResponseProperty]` in code based on the current environment state.
+
+Use it to update attributes in code from Dataverse.
+
+---
+
+## Flow overview
 
 ```mermaid
 flowchart TD
-    A["pluginreg sync"] --> B["Połączenie z Dataverse"]
-    B --> C["Indeks typów w kodzie źródłowym"]
-    C --> D["Dla każdego pliku .cs"]
-    D --> E{"Plik zawiera plugin / workflow?"}
-    E -->|nie| D
-    E -->|tak| F["Usuń istniejące atrybuty rejestracji"]
-    F --> G["Dla każdej klasy w pliku"]
+    A["pluginreg sync"] --> B["Connect to Dataverse"]
+    B --> C["Index types in source code"]
+    C --> D["For each .cs file"]
+    D --> E{"File contains plugin / workflow?"}
+    E -->|no| D
+    E -->|yes| F["Remove existing registration attributes"]
+    F --> G["For each class in file"]
     G --> H{"IPlugin?"}
-    H -->|tak| I["Pobierz stepy z Dataverse"]
-    I --> J["Generuj CrmPluginRegistration"]
-    J --> K["Generuj CrmPluginStepImage"]
-    I --> L["Pobierz Custom API"]
-    L --> M["Generuj atrybuty Custom API"]
-    H -->|workflow| N["Pobierz plugintype z Dataverse"]
-    N --> O["Generuj atrybut workflow"]
-    G --> P["Zapis pliku .cs"]
+    H -->|yes| I["Fetch steps from Dataverse"]
+    I --> J["Generate PluginRegistration"]
+    J --> K["Generate PluginStepImage"]
+    I --> L["Fetch Custom API"]
+    L --> M["Generate Custom API attributes"]
+    H -->|workflow| N["Skipped — workflow not supported"]
+    G --> P["Save .cs file"]
     P --> D
 ```
 
 ---
 
-## Krok 1 — Uruchomienie CLI
+## Step 1 — CLI invocation
 
-Komenda `sync` w `Program.cs` tworzy połączenie z Dataverse i wywołuje `MetadataSyncService.SyncSourceCode()`.
+The `sync` command in `Program.cs` connects to Dataverse and calls `MetadataSyncService.SyncSourceCode()`.
 
 ```bash
 pluginreg sync --path samples/Sample.Plugins
 ```
 
-| Parametr | Opis |
-|----------|------|
-| `--path`, `-p` | Katalog z kodem źródłowym pluginów (domyślnie bieżący katalog) |
-| `--connection`, `-c` | Connection string; bez niego zmienne `DATAVERSE_*` |
-| `--class-regex` | Własny regex wykrywania klas (gdy analiza dziedziczenia nie wystarcza) |
+| Parameter | Description |
+|-----------|-------------|
+| `--path`, `-p` | Directory with plugin source code (default: current directory) |
+| `--connection`, `-c` | Connection string; otherwise `DATAVERSE_*` variables |
+| `--class-regex` | Custom class detection regex (when inheritance analysis is insufficient) |
 
-**Uwaga:** `--profile` nie jest używany przez `sync` — operacja czyta aktualny stan z połączonego środowiska Dataverse.
+**Note:** `--profile` is not used by `sync` — the operation reads the current state from the connected Dataverse environment.
 
 ---
 
-## Krok 2 — Połączenie z Dataverse
+## Step 2 — Connecting to Dataverse
 
-Identycznie jak przy `deploy`: `Connect()` tworzy `IOrganizationService`. Wszystkie zapytania o stepy, obrazy i Custom API idą do **jednego** połączonego środowiska.
+Same as `deploy`: `Connect()` creates `IOrganizationService`. All queries for steps, images, and Custom API go to **one** connected environment.
 
-Przed `sync` warto zweryfikować środowisko:
+Verify the environment before `sync`:
 
 ```bash
 pluginreg whoami --connection "..."
@@ -67,140 +89,136 @@ pluginreg whoami --connection "..."
 
 ---
 
-## Krok 3 — Indeksowanie typów w kodzie
+## Step 3 — Indexing types in source code
 
-Gdy **nie** podano `--class-regex`, budowany jest `SourceCodeTypeIndex`:
+When `--class-regex` is **not** provided, a `SourceCodeTypeIndex` is built:
 
-1. Skanuje wszystkie pliki `.cs` (bez `obj/`, `bin/`).
-2. Parsuje deklaracje klas i relacje dziedziczenia.
-3. Rozpoznaje typy pluginów — bezpośrednio `IPlugin` / `PluginBase` / `Plugin` lub pośrednio przez klasę bazową.
-4. Rozpoznaje workflow — `CodeActivity` / `WorkFlowActivityBase` lub pośrednio.
+1. Scans all `.cs` files (excluding `obj/`, `bin/`).
+2. Parses class declarations and inheritance relationships.
+3. Recognizes plugin types — directly `IPlugin` / `PluginBase` / `Plugin`, or indirectly via a base class.
+4. Recognizes workflow — `CodeActivity` / `WorkFlowActivityBase` or indirectly.
 
-Dzięki temu `sync` obsługuje scenariusz `class MyPlugin : BasePlugin`, gdzie `BasePlugin : IPlugin`.
+This lets `sync` handle `class MyPlugin : BasePlugin` where `BasePlugin : IPlugin`.
 
-Przy `--class-regex` używany jest starszy `CodeParser` oparty wyłącznie na regex (bez analizy dziedziczenia między plikami).
-
----
-
-## Krok 4 — Iteracja po plikach źródłowych
-
-`SyncSourceCode()` enumeruje `*.cs` w `--path` i dla każdego pliku:
-
-- pomija pliki bez klas plugin/workflow (gdy używany jest indeks);
-- tworzy `CodeParser` z listą typów przypisanych do tego pliku.
+With `--class-regex`, the legacy regex-only `CodeParser` is used (no cross-file inheritance analysis).
 
 ---
 
-## Krok 5 — Usunięcie starych atrybutów
+## Step 4 — Iterating source files
 
-`CodeParser.RemoveExistingAttributes()` usuwa z pliku (regex) wszystkie:
+`SyncSourceCode()` enumerates `*.cs` under `--path` and for each file:
 
-- `[CrmPluginRegistration(...)]`
-- `[CrmPluginStepImage(...)]`
-- `[CrmCustomApiRequestParameter(...)]`
-- `[CrmCustomApiResponseProperty(...)]`
-
-**Efekt:** każdy `sync` **zastępuje** poprzednie atrybuty rejestracji — nie scala ich z ręcznymi zmianami. Zachowaj kopię lub commit przed uruchomieniem na ważnym kodzie.
+- skips files without plugin/workflow classes (when using the index);
+- creates a `CodeParser` with types assigned to that file.
 
 ---
 
-## Krok 6 — Pluginy (`IPlugin`)
+## Step 5 — Removing old attributes
 
-Dla każdej klasy pluginu w pliku wywoływane jest `AddPluginAttributes(parser, className)`.
+`CodeParser.RemoveExistingAttributes()` removes from the file (regex) all of:
 
-### 6.1 Pobranie stepów z Dataverse
+- `[PluginRegistration(...)]` and legacy `[CrmPluginRegistration(...)]`
+- `[CustomApiRegistration(...)]`
+- `[PluginStepImage(...)]` and legacy `[CrmPluginStepImage(...)]`
+- `[CustomApiRequestParameter(...)]` and legacy `[CrmCustomApiRequestParameter(...)]`
+- `[CustomApiResponseProperty(...)]` and legacy `[CrmCustomApiResponseProperty(...)]`
 
-`DataverseQueries.GetPluginStepsForTypeName(className)` — wyszukuje `sdkmessageprocessingstep` powiązane z `plugintype.typename` = pełna nazwa klasy.
+**Effect:** every `sync` **replaces** previous registration attributes — it does not merge with manual edits. Keep a backup or commit before running on important code.
 
-Walidacja: duplikaty nazw stepów w Dataverse powodują wyjątek.
+---
 
-### 6.2 Pominięcie stepów wewnętrznych Custom API
+## Step 6 — Plugins (`IPlugin`)
 
-Stepy ze `stage = 30` (`CustomApiInternalStage`) są pomijane — to wewnętrzny krok Custom API, nie deklarowany w kodzie pluginu.
+For each plugin class in the file, `AddPluginAttributes(parser, className)` runs.
 
-### 6.3 Mapowanie stepu na atrybut
+### 6.1 Fetching steps from Dataverse
 
-Dla każdego stepu odczytywane są pola Dataverse i budowany `CrmPluginRegistrationAttribute`:
+`DataverseQueries.GetPluginStepsForTypeName(className)` — finds `sdkmessageprocessingstep` linked to `plugintype.typename` = full class name.
 
-| Pole Dataverse | Właściwość atrybutu |
-|----------------|---------------------|
-| `sdkmessageid` → nazwa | `Message` |
-| `sdkmessagefilterid` → encja lub `"none"` | `EntityLogicalName` |
+Validation: duplicate step names in Dataverse cause an exception.
+
+### 6.2 Skipping internal Custom API steps
+
+Steps with `stage = 30` (`CustomApiInternalStage`) are skipped — internal Custom API step, not declared in plugin code.
+
+### 6.3 Mapping a step to an attribute
+
+For each step, Dataverse fields are read and a `PluginRegistrationAttribute` is built via `CreateStep`:
+
+| Dataverse field | Attribute property |
+|-----------------|-------------------|
+| `sdkmessageid` → name | `Message` (as `MessageTypeEnum`) |
+| `sdkmessagefilterid` → entity or `"none"` | `EntityLogicalName` |
 | `stage` | `StageEnum` |
 | `mode` | `ExecutionModeEnum` |
-| `filteringattributes` | `FilteringAttributes` (string) |
+| `filteringattributes` | `FilteringAttributes` (`string[]`) |
 | `rank` | `ExecutionOrder` |
 | `configuration` | `UnSecureConfiguration` |
-| `description` | `Description` |
 | `asyncautodelete` | `DeleteAsyncOperation` |
 | `sdkmessageprocessingstepid` | `Id` |
 
-Jeśli nazwa stepu w Dataverse różni się od domyślnej `{class}.{Stage}`, generowana jest nazwana właściwość `Name = "..."`.
+If the step name in Dataverse differs from the default `{class}.{Stage}`, a named property `Name = "..."` is generated.
 
-Atrybut wstawiany jest przed deklaracją klasy przez `AttributeCodeGenerator`.
+The attribute is inserted before the class declaration via `AttributeCodeGenerator`.
 
-### 6.4 Obrazy stepów
+**Note:** messages not in `MessageTypeEnum` cannot be synced — add them to the enum first.
 
-`ReadStepImages(stepId)` pobiera `sdkmessageprocessingstepimage` i generuje osobne `[CrmPluginStepImage]`:
+### 6.4 Step images
 
-- `Stage` i opcjonalnie `Message` (gdy wiele stepów na tym samym stage);
-- `Name`, `ImageType`, `Attributes`.
+`ReadStepImages(stepId)` fetches `sdkmessageprocessingstepimage` and generates separate `[PluginStepImage]` attributes:
+
+- `Name`, `ImageType`, `Attributes` (constructor: name, image type, attribute list).
 
 Generator: `PluginStepImageCodeGenerator`.
 
-### 6.5 Custom API powiązane z typem
+### 6.5 Custom API linked to the type
 
-`GetCustomApisForPluginType(className)` zwraca definicje Custom API z parametrami i response properties.
+`GetCustomApisForPluginType(className)` returns Custom API definitions with parameters and response properties.
 
-Dla każdego API generowane są:
+For each API it generates:
 
-- `[CrmPluginRegistration("unique_name")]` z metadanymi (FriendlyName, BindingType, IsFunction…);
-- `[CrmCustomApiRequestParameter(...)]`;
-- `[CrmCustomApiResponseProperty(...)]`.
+- `[CustomApiRegistration(...)]` with metadata (DisplayName, BindingType, IsFunction, etc.);
+- `[CustomApiRequestParameter(...)]`;
+- `[CustomApiResponseProperty(...)]`.
 
-Gdy na klasie jest **więcej niż jedno** Custom API, parametry dostają `ApiUniqueName` w wygenerowanym kodzie.
+When a class has **more than one** Custom API, parameters get `ApiUniqueName` in the generated code.
 
 Generator: `CustomApiCodeGenerator`.
 
 ---
 
-## Krok 7 — Workflow activities
+## Step 7 — Workflow activities
 
-Dla klas workflow (`CodeActivity` i pochodne) `AddWorkflowAttributes()`:
-
-1. Pobiera `plugintype` po `typename` z Dataverse.
-2. Odczytuje `name`, `friendlyname`, `description`, `workflowactivitygroupname`.
-3. Pobiera `isolationmode` z assembly.
-4. Generuje atrybut konstruktora workflow i wstawia przed klasą.
+Workflow classes (`CodeActivity` and derivatives) are detected but **workflow registration attributes are not generated** — the current attribute model does not support workflow activity registration.
 
 ---
 
-## Krok 8 — Zapis pliku
+## Step 8 — Saving the file
 
-`CodeParser.Save()` zapisuje zmodyfikowaną zawartość z **oryginalnym kodowaniem** pliku (UTF-8 z BOM itd.).
+`CodeParser.Save()` writes the modified content with the file's **original encoding** (UTF-8 with BOM, etc.).
 
-Narzędzie loguje każdy zaktualizowany plik i podsumowanie liczby plików.
+The tool logs each updated file and a summary count.
 
 ---
 
-## Przykład użycia
+## Example usage
 
 ```bash
-# Sync z domyślnego katalogu (połączenie z DATAVERSE_*)
+# Sync from default directory (connection via DATAVERSE_*)
 pluginreg sync --path samples/Sample.Plugins
 
-# Sync z jawnym connection string
+# Sync with explicit connection string
 pluginreg sync --path ./MyPlugins --connection "AuthType=ClientSecret;..."
 
-# Sync z własnym regexem klas (edge case)
+# Sync with custom class regex (edge case)
 pluginreg sync --path ./MyPlugins --class-regex "public class (?'class'\\w+)[\\W]*: MyPluginBase"
 ```
 
 ---
 
-## Przykład efektu w kodzie
+## Example effect in code
 
-Przed `sync` (brak atrybutów lub stare):
+Before `sync` (no attributes or outdated):
 
 ```csharp
 public sealed class AccountCreatePlugin : IPlugin
@@ -209,53 +227,63 @@ public sealed class AccountCreatePlugin : IPlugin
 }
 ```
 
-Po `sync` (metadane z Dataverse):
+After `sync` (metadata from Dataverse):
 
 ```csharp
-[CrmPluginRegistration("Create", "account", StageEnum.PreOperation, ExecutionModeEnum.Synchronous, "name", 1)]
+[PluginRegistration(MessageTypeEnum.Create, "account", StageEnum.PreOperation, ExecutionModeEnum.Synchronous, ["name"], 1)]
 public sealed class AccountCreatePlugin : IPlugin
 {
     public void Execute(IServiceProvider serviceProvider) { }
 }
 ```
 
-Przy wielu polach filtrowania generator może wyemitować tablicę:
+With multiple filtering attributes the generator may emit an array:
 
 ```csharp
 new[] { "name", "accountnumber" }
 ```
 
+Custom API example:
+
+```csharp
+[CustomApiRegistration("sample_ProcessAccount", FriendlyName = "Process Account")]
+[CustomApiRequestParameter("AccountId", CustomApiParameterTypeEnum.String, IsRequired = true)]
+[CustomApiResponseProperty("Success", CustomApiParameterTypeEnum.Boolean)]
+public sealed class ProcessAccountCustomApiPlugin : IPlugin { ... }
+```
+
 ---
 
-## Relacja `sync` ↔ `deploy`
+## Relationship `sync` ↔ `deploy`
 
-| Aspekt | `sync` | `deploy` |
+| Aspect | `sync` | `deploy` |
 |--------|--------|----------|
-| Kierunek danych | Dataverse → kod | kod + DLL → Dataverse |
-| Wymaga DLL | nie | tak |
-| Wymaga `pluginregistration.json` | nie | tak |
-| Modyfikuje `.cs` | tak | nie |
-| `stepOverrides` z profilu | nie stosuje | stosuje przy deploy |
-| Usuwa stare atrybuty w kodzie | tak | — |
+| Data direction | Dataverse → code | code + DLL → Dataverse |
+| Requires DLL | no | yes |
+| Requires `pluginregistration.json` | no | yes |
+| Modifies `.cs` | yes | no |
+| Profile `stepOverrides` | not applied | applied on deploy |
+| Removes old attributes in code | yes | — |
 
-Typowe scenariusze:
+Typical scenarios:
 
-1. **Plugin zarejestrowany ręcznie w Plugin Registration Tool** → `sync` aby dodać atrybuty do repo.
-2. **Nowe środowisko, ten sam kod** → `deploy` (nie `sync`).
-3. **Zmiany w Dataverse (np. nowy parametr Custom API)** → `sync` aby zaktualizować kod, potem commit.
-
----
-
-## Ograniczenia i ryzyka
-
-- **Nadpisuje atrybuty** — ręczne edycje w atrybutach rejestracji zostaną utracone przy kolejnym `sync`.
-- **Wymaga zarejestrowanego typu** — klasa musi już istnieć jako `plugintype` w Dataverse (po wcześniejszym `deploy` lub ręcznej rejestracji).
-- **Pełna nazwa typu** — dopasowanie stepów odbywa się po `namespace.class`; zmiana namespace w kodzie bez aktualizacji w Dataverse spowoduje brak dopasowania.
-- **Secure configuration** — `sync` nie odtwarza secure config w atrybutach (pozostaje w Dataverse; deploy zarządza osobnym rekordem).
-- **Jedno środowisko na raz** — wynik zależy od tego, do którego Dataverse jesteś podłączony.
+1. **Plugin registered manually in Plugin Registration Tool** → `sync` to add attributes to the repo.
+2. **New environment, same code** → `deploy` (not `sync`).
+3. **Changes in Dataverse (e.g. new Custom API parameter)** → `sync` to update code, then commit.
 
 ---
 
-## W skrócie
+## Limitations and risks
 
-`sync` **aktualizuje atrybuty w kodzie źródłowym**: pobiera z Dataverse definicje stepów, obrazów i Custom API przypisanych do zarejestrowanych typów pluginów i zapisuje je jako atrybuty C# gotowe do kolejnego `deploy` i wersjonowania w repozytorium.
+- **Overwrites attributes** — manual edits to registration attributes are lost on the next `sync`.
+- **Requires registered type** — the class must already exist as `plugintype` in Dataverse (after a prior `deploy` or manual registration).
+- **Full type name** — step matching uses `namespace.class`; changing namespace in code without updating Dataverse causes no match.
+- **Secure configuration** — `sync` does not recreate secure config in attributes (it stays in Dataverse; deploy manages a separate record).
+- **One environment at a time** — output depends on which Dataverse you are connected to.
+- **MessageTypeEnum only** — uncommon SDK messages must be added to `MessageTypeEnum` before they can be synced.
+
+---
+
+## In short
+
+`sync` **updates attributes in source code**: it pulls step, image, and Custom API definitions from Dataverse for registered plugin types and writes them as C# attributes ready for the next `deploy` and version control.

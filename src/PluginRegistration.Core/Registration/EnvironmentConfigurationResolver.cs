@@ -8,39 +8,36 @@ public sealed class EnvironmentConfigurationResolver
 {
     private static readonly Regex EnvVarPattern = new(@"\$\{([^}]+)\}", RegexOptions.Compiled);
 
-    private readonly ProfileSettings? _profileSettings;
+    private readonly Dictionary<string, StepOverride> _stepOverrides;
+    private readonly List<CustomApiDefinition> _customApis;
 
-    public EnvironmentConfigurationResolver(ProfileSettings? profileSettings)
+    public EnvironmentConfigurationResolver(
+        Dictionary<string, StepOverride> stepOverrides,
+        List<CustomApiDefinition> customApis)
     {
-        _profileSettings = profileSettings;
+        _stepOverrides = stepOverrides;
+        _customApis = customApis;
     }
 
     public CustomApiDefinition? GetCustomApiOverride(string uniqueName)
-    {
-        if (_profileSettings is null)
-        {
-            return null;
-        }
-
-        return _profileSettings.CustomApis.FirstOrDefault(definition =>
+        => _customApis.FirstOrDefault(definition =>
             string.Equals(definition.UniqueName, uniqueName, StringComparison.OrdinalIgnoreCase));
-    }
 
-    public PluginRegistrationAttribute ApplyProfileOverrides(PluginRegistrationAttribute attribute)
+    public PluginRegistrationAttribute ApplyStepOverrides(PluginRegistrationAttribute attribute)
     {
-        if (_profileSettings is null || attribute.Name is null)
+        if (attribute.Name is null)
         {
             return ApplyEnvironmentVariables(attribute);
         }
 
         StepOverride? stepOverride = null;
         if (!string.IsNullOrWhiteSpace(attribute.Id)
-            && _profileSettings.StepOverrides.TryGetValue(attribute.Id, out var byId))
+            && _stepOverrides.TryGetValue(attribute.Id, out var byId))
         {
             stepOverride = byId;
         }
         else if (!string.IsNullOrWhiteSpace(attribute.Name)
-            && _profileSettings.StepOverrides.TryGetValue(attribute.Name, out var byName))
+            && _stepOverrides.TryGetValue(attribute.Name, out var byName))
         {
             stepOverride = byName;
         }

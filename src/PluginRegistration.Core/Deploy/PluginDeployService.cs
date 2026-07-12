@@ -15,23 +15,22 @@ public sealed class PluginDeployService
         _trace = trace;
     }
 
-    public void Deploy(string workingDirectory, string? profile, bool excludePluginSteps = false, bool includeWorkflowActivities = false)
+    public void Deploy(string workingDirectory, bool excludePluginSteps = false, bool includeWorkflowActivities = false)
     {
         var config = PluginRegistrationConfig.Load(workingDirectory);
-        var entries = config.GetPluginEntries(profile);
+        var entries = config.GetPluginEntries();
 
         if (entries.Count == 0)
         {
-            throw new PluginRegistrationException($"No plugin deploy entries found for profile '{profile ?? "default"}'.");
+            throw new PluginRegistrationException("No plugin deploy entries found in pluginregistration.json.");
         }
 
-        var profileSettings = config.GetProfileSettings(profile);
-        var registrationService = new PluginRegistrationService(_service, _trace, profileSettings);
+        var registrationService = new PluginRegistrationService(_service, _trace, config);
         var customApiService = new CustomApiRegistrationService(_service, _trace);
 
         foreach (var entry in entries)
         {
-            _trace.WriteLine("Deploying plugins using profile entry (solution: {0})", entry.Solution ?? "<none>");
+            _trace.WriteLine("Deploying plugins (solution: {0})", entry.Solution ?? "<none>");
 
             registrationService.SolutionUniqueName = entry.Solution;
             var skipSteps = excludePluginSteps || entry.ExcludePluginSteps;
@@ -47,12 +46,12 @@ public sealed class PluginDeployService
             }
         }
 
-        if (profileSettings?.CustomApis.Count > 0)
+        if (config.CustomApis.Count > 0)
         {
             var solutionName = entries.LastOrDefault()?.Solution;
             customApiService.SolutionUniqueName = solutionName;
             customApiService.EnsureCustomApis(
-                profileSettings.CustomApis.Where(definition => definition.CreateIfMissing));
+                config.CustomApis.Where(definition => definition.CreateIfMissing));
         }
     }
 }

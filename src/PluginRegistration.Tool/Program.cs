@@ -29,10 +29,6 @@ namespace PluginRegistration.Tool
                 IsRequired = false
             };
 
-            var profileOption = new Option<string?>(
-                aliases: ["--profile", "-pr"],
-                description: "Environment profile name (dev, test, prod).");
-
             var connectionOption = new Option<string?>(
                 aliases: ["--connection", "-c"],
                 description: "Dataverse connection string. If omitted, DATAVERSE_* environment variables are used.");
@@ -49,14 +45,13 @@ namespace PluginRegistration.Tool
                 aliases: ["--class-regex"],
                 description: "Custom regex for detecting plugin classes during sync.");
 
-            var deployCommand = new Command("deploy", "Deploy plugin assemblies and register steps for the selected profile.");
+            var deployCommand = new Command("deploy", "Deploy plugin assemblies and register steps.");
             deployCommand.AddOption(pathOption);
-            deployCommand.AddOption(profileOption);
             deployCommand.AddOption(connectionOption);
             deployCommand.AddOption(excludeStepsOption);
             deployCommand.AddOption(workflowOption);
-            CommandValidators.AddDeployValidators(deployCommand, pathOption, profileOption, connectionOption);
-            deployCommand.SetHandler(DeployAsync, pathOption, profileOption, connectionOption, excludeStepsOption, workflowOption);
+            CommandValidators.AddDeployValidators(deployCommand, pathOption, connectionOption);
+            deployCommand.SetHandler(DeployAsync, pathOption, connectionOption, excludeStepsOption, workflowOption);
 
             var syncCommand = new Command("sync", "Download plugin step metadata from Dataverse and update source code attributes.");
             syncCommand.AddOption(pathOption);
@@ -69,11 +64,6 @@ namespace PluginRegistration.Tool
             whoamiCommand.AddOption(connectionOption);
             CommandValidators.AddWhoAmIValidators(whoamiCommand, connectionOption);
             whoamiCommand.SetHandler(WhoAmIAsync, connectionOption);
-
-            var profilesOption = new Option<string>(
-                aliases: ["--profiles"],
-                getDefaultValue: () => "dev,test,prod",
-                description: "Comma-separated profile names for generated config.");
 
             var assemblyPathOption = new Option<string>(
                 aliases: ["--assembly-path"],
@@ -90,12 +80,11 @@ namespace PluginRegistration.Tool
 
             var initCommand = new Command("init", "Generate pluginregistration.json from source code.");
             initCommand.AddOption(pathOption);
-            initCommand.AddOption(profilesOption);
             initCommand.AddOption(assemblyPathOption);
             initCommand.AddOption(solutionOption);
             initCommand.AddOption(forceOption);
-            CommandValidators.AddInitValidators(initCommand, pathOption, profilesOption);
-            initCommand.SetHandler(InitAsync, pathOption, profilesOption, assemblyPathOption, solutionOption, forceOption);
+            CommandValidators.AddInitValidators(initCommand, pathOption);
+            initCommand.SetHandler(InitAsync, pathOption, assemblyPathOption, solutionOption, forceOption);
 
             var earlyBoundConfigOption = new Option<string?>(
                 aliases: ["--config"],
@@ -203,7 +192,6 @@ namespace PluginRegistration.Tool
 
             static Task DeployAsync(
                 DirectoryInfo? path,
-                string? profile,
                 string? connection,
                 bool excludeSteps,
                 bool workflow)
@@ -212,8 +200,8 @@ namespace PluginRegistration.Tool
                 var service = Connect(connection);
                 var deployService = new PluginDeployService(service, trace);
 
-                trace.WriteLine("Deploying plugins for profile '{0}'", profile ?? "default");
-                deployService.Deploy(ResolvePath(path).FullName, profile, excludeSteps, workflow);
+                trace.WriteLine("Deploying plugins.");
+                deployService.Deploy(ResolvePath(path).FullName, excludeSteps, workflow);
                 trace.WriteLine("Deployment completed successfully.");
                 return Task.CompletedTask;
             }
@@ -231,20 +219,14 @@ namespace PluginRegistration.Tool
 
             static Task InitAsync(
                 DirectoryInfo? path,
-                string profiles,
                 string assemblyPath,
                 string? solution,
                 bool force)
             {
                 var trace = new ConsoleTrace();
                 var workingDirectory = ResolvePath(path).FullName;
-                var profileList = profiles
-                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .Where(p => !string.IsNullOrWhiteSpace(p))
-                    .ToArray();
-
                 var scaffold = new ConfigScaffoldService(trace);
-                scaffold.Generate(workingDirectory, profileList, assemblyPath, solution, force);
+                scaffold.Generate(workingDirectory, assemblyPath, solution, force);
                 return Task.CompletedTask;
             }
 

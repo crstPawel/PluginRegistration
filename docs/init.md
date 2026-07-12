@@ -1,116 +1,116 @@
-# Init — generowanie `pluginregistration.json`
+# Init — generating `pluginregistration.json`
 
-Ten dokument opisuje, jak działa komenda `pluginreg init`: od wywołania CLI do pliku konfiguracyjnego deploy.
+This document describes how the `pluginreg init` command works: from CLI invocation to the deploy configuration file.
 
-**Ważne:** `init` **nie łączy się z Dataverse** i **nie modyfikuje kodu źródłowego**. Tworzy wyłącznie plik `pluginregistration.json` w katalogu roboczym.
+CLI reference: [cli.md](cli.md). Configuration format: [configuration.md](configuration.md). Getting started: [getting-started.md](getting-started.md).
+
+**Important:** `init` **does not connect to Dataverse** and **does not modify source code**. It only creates `pluginregistration.json` in the working directory.
 
 ---
 
-## Przegląd przepływu
+## Flow overview
 
 ```mermaid
 flowchart TD
-    A["pluginreg init"] --> B{"pluginregistration.json istnieje?"}
-    B -->|tak, bez --force| C["Błąd: użyj --force"]
-    B -->|nie lub --force| D["CreateFromSource"]
-    D --> E["Skan plików .cs"]
-    E --> F["Wykryj nazwy stepów"]
-    E --> G["Wykryj Custom API"]
-    F --> H["Utwórz profiles + stepOverrides"]
-    G --> I["Utwórz profiles.customApis"]
-    H --> J["Zapis pluginregistration.json"]
+    A["pluginreg init"] --> B{"pluginregistration.json exists?"}
+    B -->|yes, without --force| C["Error: use --force"]
+    B -->|no or --force| D["CreateFromSource"]
+    D --> E["Scan .cs files"]
+    E --> F["Detect step names"]
+    E --> G["Detect Custom APIs"]
+    F --> H["Create profiles + stepOverrides"]
+    G --> I["Create profiles.customApis"]
+    H --> J["Write pluginregistration.json"]
     I --> J
 ```
 
 ---
 
-## Krok 1 — Uruchomienie CLI
+## Step 1 — CLI invocation
 
-Komenda `init` w `Program.cs` wywołuje `ConfigScaffoldService.Generate()`.
+The `init` command in `Program.cs` calls `ConfigScaffoldService.Generate()`.
 
 ```bash
 pluginreg init --path samples/Sample.Plugins --profiles dev,test,prod --assembly-path bin/Release --solution SampleSolution
 ```
 
-| Parametr | Domyślnie | Opis |
-|----------|-----------|------|
-| `--path`, `-p` | bieżący katalog | Katalog projektu pluginów |
-| `--profiles` | `dev,test,prod` | Lista profili oddzielona przecinkami |
-| `--assembly-path` | `bin/Release` | Ścieżka DLL zapisywana w `plugins[].assemblyPath` |
-| `--solution` | — | Nazwa solution dodawana do wpisu deploy |
-| `--force` | `false` | Nadpisuje istniejący `pluginregistration.json` |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--path`, `-p` | current directory | Plugin project directory |
+| `--profiles` | `dev,test,prod` | Comma-separated list of profiles |
+| `--assembly-path` | `bin/Release` | DLL path written to `plugins[].assemblyPath` |
+| `--solution` | — | Solution name added to the deploy entry |
+| `--force` | `false` | Overwrites existing `pluginregistration.json` |
 
 ---
 
-## Krok 2 — Walidacja pliku wyjściowego
+## Step 2 — Output file validation
 
-`ConfigScaffoldService.Generate()` sprawdza, czy `pluginregistration.json` już istnieje.
+`ConfigScaffoldService.Generate()` checks whether `pluginregistration.json` already exists.
 
-- Plik istnieje i **brak** `--force` → wyjątek z komunikatem o użyciu `--force`.
-- W przeciwnym razie kontynuuje generowanie.
-
----
-
-## Krok 3 — Generowanie z kodu źródłowego
-
-`init` zawsze skanuje pliki źródłowe `.cs` w podanym katalogu (`CreateFromSource`).
+- File exists and **no** `--force` → exception with a message to use `--force`.
+- Otherwise generation continues.
 
 ---
 
-## Krok 4 — Skan plików źródłowych
+## Step 3 — Generation from source code
 
-`EnumerateSourceFiles()` przeszukuje rekurencyjnie katalog `--path`:
-
-- uwzględnia pliki `*.cs`;
-- pomija katalogi `obj/` i `bin/`.
-
-Dla każdego pliku odczytywana jest zawartość tekstowa (regex, bez kompilacji).
+`init` always scans `.cs` source files in the given directory (`CreateFromSource`).
 
 ---
 
-## Krok 5 — Wykrywanie nazw stepów
+## Step 4 — Scanning source files
 
-`DiscoverStepNames()` szuka bloków `[CrmPluginRegistration(...)]` powiązanych z klasą pluginu (`PluginStepBlockRegex`).
+`EnumerateSourceFiles()` recursively searches the `--path` directory:
 
-Dla każdego dopasowania:
+- includes `*.cs` files;
+- skips `obj/` and `bin/` directories.
 
-1. Wyciąga `StageEnum` z atrybutu.
-2. Wyciąga nazwę klasy z deklaracji `class`.
-3. Łączy z `namespace` z pliku.
-4. Generuje nazwę stepu: `{namespace}.{class}.{Stage}` przez `PluginStepNameResolver`.
-
-Przykład: `Sample.Plugins.AccountCreatePlugin.PreOperation`.
-
-**Uwaga:** `init` nie czyta DLL ani Dataverse — wykrywa tylko to, co jest już zapisane w atrybutach w kodzie. Jeśli atrybutów jeszcze nie ma, `stepOverrides` będą puste.
+For each file, text content is read (regex-based, no compilation).
 
 ---
 
-## Krok 6 — Wykrywanie Custom API
+## Step 5 — Detecting step names
 
-`DiscoverCustomApis()` szuka wzorca:
+`DiscoverStepNames()` looks for `[PluginRegistration(...)]` blocks associated with a plugin class.
+
+For each match:
+
+1. Extracts `StageEnum` from the attribute.
+2. Extracts the class name from the `class` declaration.
+3. Combines with `namespace` from the file.
+4. Generates the step name: `{namespace}.{class}.{Stage}` via `PluginStepNameResolver`.
+
+Example: `Sample.Plugins.AccountCreatePlugin.PreOperation`.
+
+**Note:** `init` does not read DLLs or Dataverse — it only detects what is already written in attributes in code. If attributes are missing, `stepOverrides` will be empty.
+
+---
+
+## Step 6 — Detecting Custom APIs
+
+`DiscoverCustomApis()` looks for `[CustomApiRegistration(...)]` on plugin classes:
 
 ```csharp
-[CrmPluginRegistration("api_unique_name")]
+[CustomApiRegistration("api_unique_name")]
 public class MyPlugin : IPlugin
 ```
 
-(`PluginTypeRegex`)
+For each API it records:
 
-Dla każdego API zapisywane są:
+- `uniqueName` — from the attribute;
+- `displayName` — from `DisplayName` / `FriendlyName`, or defaults to `uniqueName`;
+- `pluginTypeName` — full class name (`namespace.class`).
 
-- `uniqueName` — z atrybutu;
-- `displayName` — domyślnie taki sam jak `uniqueName`;
-- `pluginTypeName` — pełna nazwa klasy (`namespace.class`).
-
-Duplikaty `uniqueName` są deduplikowane.
+Duplicate `uniqueName` values are deduplicated.
 
 ---
 
-## Krok 7 — Budowa struktury JSON
+## Step 7 — Building the JSON structure
 
-### Sekcja `plugins`
+### `plugins` section
 
-Jeden wpis deploy dla wszystkich profili:
+One deploy entry for all profiles:
 
 ```json
 {
@@ -120,15 +120,15 @@ Jeden wpis deploy dla wszystkich profili:
 }
 ```
 
-Wartości pochodzą z parametrów CLI.
+Values come from CLI parameters.
 
-### Sekcja `profiles`
+### `profiles` section
 
-Dla **każdego** profilu z `--profiles` tworzony jest `ProfileSettings`:
+For **each** profile from `--profiles`, a `ProfileSettings` object is created:
 
 #### `stepOverrides`
 
-Dla każdej wykrytej nazwy stepu:
+For each detected step name:
 
 ```json
 "Sample.Plugins.AccountCreatePlugin.PreOperation": {
@@ -136,11 +136,11 @@ Dla każdej wykrytej nazwy stepu:
 }
 ```
 
-Puste `unSecureConfiguration` to placeholder — uzupełniasz go ręcznie lub przez zmienne `${ENV_VAR}` przed deployem.
+Empty `unSecureConfiguration` is a placeholder — fill it manually or via `${ENV_VAR}` before deploy.
 
 #### `customApis`
 
-Dla każdego wykrytego Custom API:
+For each detected Custom API:
 
 ```json
 {
@@ -152,70 +152,70 @@ Dla każdego wykrytego Custom API:
 }
 ```
 
-`createIfMissing: true` ustawiane jest **tylko dla pierwszego profilu** z listy `--profiles`. Pozostałe profile dostają `false`.
+`createIfMissing: true` is set **only for the first profile** in `--profiles`. Other profiles get `false`.
 
 ---
 
-## Krok 8 — Serializacja i zapis
+## Step 8 — Serialization and save
 
-Konfiguracja jest serializowana do JSON (camelCase, pomijane wartości `null`) i zapisywana jako:
+Configuration is serialized to JSON (camelCase, null values omitted) and saved as:
 
 ```
 {workingDirectory}/pluginregistration.json
 ```
 
-Narzędzie loguje ścieżkę utworzonego pliku.
+The tool logs the path of the created file.
 
 ---
 
-## Przykład użycia
+## Example usage
 
 ```bash
-# Pierwsze uruchomienie w nowym projekcie
+# First run in a new project
 pluginreg init --path samples/Sample.Plugins
 
-# Z własnymi profilami i solution
+# With custom profiles and solution
 pluginreg init \
   --path samples/Sample.Plugins \
   --profiles dev,test,prod \
   --assembly-path bin/Release \
   --solution SampleSolution
 
-# Nadpisanie istniejącego pliku
+# Overwrite an existing file
 pluginreg init --path samples/Sample.Plugins --force
 ```
 
 ---
 
-## Relacja `init` → `deploy`
+## Relationship `init` → `deploy`
 
 | Element | `init` | `deploy` |
 |---------|--------|----------|
-| `plugins[].assemblyPath` | zapisuje | używa do wyszukania DLL |
-| `plugins[].solution` | zapisuje | dodaje komponenty do solution |
-| `profiles.*.stepOverrides` | tworzy szkielet | nadpisuje config stepów per środowisko |
-| `profiles.*.customApis` | rejestruje wykryte API | `createIfMissing` tworzy API z JSON |
+| `plugins[].assemblyPath` | writes | uses to find DLLs |
+| `plugins[].solution` | writes | adds components to solution |
+| `profiles.*.stepOverrides` | creates scaffold | overrides step config per environment |
+| `profiles.*.customApis` | registers detected APIs | `createIfMissing` creates API from JSON |
 
-Typowy workflow:
+Typical workflow:
 
 ```bash
 pluginreg init --path ./MyPlugins
-# uzupełnij stepOverrides w pluginregistration.json
+# fill in stepOverrides in pluginregistration.json
 dotnet build -c Release
 pluginreg deploy --path ./MyPlugins --profile dev
 ```
 
 ---
 
-## Ograniczenia
+## Limitations
 
-- **Bez atrybutów w kodzie** `init` nie wygeneruje `stepOverrides` ani `customApis`.
-- **Nie waliduje** połączenia z Dataverse — to robi `whoami` / `deploy`.
-- **Regex, nie kompilator** — wykrywanie opiera się na wzorcu tekstowym w plikach `.cs`; nietypowy format atrybutów może nie zostać rozpoznany.
-- **Nie generuje atrybutów** — do synchronizacji metadanych z Dataverse do kodu służy `sync` (patrz [sync.md](sync.md)).
+- **Without attributes in code**, `init` will not generate `stepOverrides` or `customApis`.
+- **Does not validate** Dataverse connection — use `whoami` / `deploy` for that.
+- **Regex, not compiler** — detection relies on text patterns in `.cs` files; unusual attribute formatting may not be recognized.
+- **Does not generate attributes** — use `sync` to pull metadata from Dataverse into code (see [sync.md](sync.md)).
 
 ---
 
-## W skrócie
+## In short
 
-`init` to **generator szkieletu konfiguracji deploy**: tworzy `pluginregistration.json` z profilami środowisk, kluczami `stepOverrides` i wpisami Custom API na podstawie istniejących atrybutów w kodzie.
+`init` is a **deploy configuration scaffold generator**: it creates `pluginregistration.json` with environment profiles, `stepOverrides` keys, and Custom API entries based on existing attributes in code.

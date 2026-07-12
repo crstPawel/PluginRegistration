@@ -18,12 +18,12 @@ public sealed class PluginRegistrationService
     public PluginRegistrationService(
         IOrganizationService service,
         ITrace trace,
-        ProfileSettings? profileSettings)
+        PluginRegistrationConfig config)
     {
         _service = service;
         _queries = new DataverseQueries(service);
         _trace = trace;
-        _environmentResolver = new EnvironmentConfigurationResolver(profileSettings);
+        _environmentResolver = new EnvironmentConfigurationResolver(config.StepOverrides, config.CustomApis);
     }
 
     public string? SolutionUniqueName { get; set; }
@@ -202,7 +202,7 @@ public sealed class PluginRegistrationService
 
                 var stepAttribute = PluginStepNameResolver.ApplyStepName(
                     pluginType,
-                    _environmentResolver.ApplyProfileOverrides(attribute));
+                    _environmentResolver.ApplyStepOverrides(attribute));
                 RegisterStep(pluginType, pluginTypeId, existingSteps, stepAttribute);
             }
 

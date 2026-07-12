@@ -1,58 +1,60 @@
-# Deploy — rejestracja pluginów i Custom API w Dataverse
+# Deploy — registering plugins and Custom APIs in Dataverse
 
-Ten dokument opisuje, **co dokładnie dzieje się** podczas wywołania `pluginreg deploy`. Jest to najbardziej złożona operacja narzędzia.
+This document describes **exactly what happens** when you run `pluginreg deploy`. It is the most complex operation in the tool.
 
-**Kluczowe fakty:**
-- `deploy` **wgrywa** zawartość DLL(i) do Dataverse jako `pluginassembly`.
-- **Nie kompiluje** kodu — operuje wyłącznie na już zbudowanych artefaktach (zazwyczaj `bin/Release/*.dll`).
-- Używa **reflection-only** ładowania (`MetadataLoadContext`) — kod pluginu nie jest wykonywany.
-- Rejestruje/zaktualizuje `plugintype`, `sdkmessageprocessingstep`, obrazy, secure config i Custom API.
-- Obsługuje **profile środowisk** (`dev`, `test`, `prod`) przez `pluginregistration.json`.
-- Opcjonalnie dodaje wszystkie komponenty do solution (`--solution` lub wpis w JSON).
+CLI reference: [cli.md](cli.md). Configuration: [configuration.md](configuration.md). Getting started: [getting-started.md](getting-started.md).
+
+**Key facts:**
+- `deploy` **uploads** DLL content to Dataverse as `pluginassembly`.
+- It **does not compile** code — it only works on already-built artifacts (typically `bin/Release/*.dll`).
+- Uses **reflection-only** loading (`MetadataLoadContext`) — plugin code is never executed.
+- Registers/updates `plugintype`, `sdkmessageprocessingstep`, images, secure config, and Custom API.
+- Supports **environment profiles** (`dev`, `test`, `prod`) via `pluginregistration.json`.
+- Optionally adds all components to a solution (`--solution` or an entry in JSON).
 
 ---
 
-## Przegląd przepływu
+## Flow overview
 
 ```mermaid
 flowchart TD
-    A["pluginreg deploy --profile dev"] --> B["Walidacja CLI"]
-    B --> C["Połączenie z Dataverse"]
-    C --> D["Wczytaj pluginregistration.json"]
-    D --> E["Wybierz pasujące wpisy plugins[] dla profilu"]
-    E --> F["Pobierz profileSettings dla profilu"]
-    F --> G["Dla każdego wpisu"]
-    G --> H["Rozwiąż ścieżki do DLL"]
-    H --> I["Dla każdej DLL"]
+    A["pluginreg deploy --profile dev"] --> B["CLI validation"]
+    B --> C["Connect to Dataverse"]
+    C --> D["Load pluginregistration.json"]
+    D --> E["Select matching plugins[] entries for profile"]
+    E --> F["Load profileSettings for profile"]
+    F --> G["For each entry"]
+    G --> H["Resolve DLL paths"]
+    H --> I["For each DLL"]
     I --> J["RegisterPlugins"]
     J --> K{"exclude-steps?"}
-    K -->|nie| L["RegisterPluginSteps + Custom API z atrybutów"]
-    K -->|tak| M["Tylko assembly"]
-    G --> N["Opcjonalnie RegisterWorkflowActivities"]
-    E --> O["Po wszystkich pluginach"]
+    K -->|no| L["RegisterPluginSteps + Custom API from attributes"]
+    K -->|yes| M["Assembly only"]
+    G --> N["Optional RegisterWorkflowActivities (skipped — not supported)"]
+    E --> O["After all plugins"]
     O --> P{"profile.customApis?"}
-    P -->|tak| Q["EnsureCustomApis (tylko createIfMissing)"]
-    Q --> R["Dodaj do solution (jeśli podano)"]
+    P -->|yes| Q["EnsureCustomApis (createIfMissing only)"]
+    Q --> R["Add to solution (if specified)"]
 ```
 
 ---
 
-## Krok 1 — Uruchomienie i walidacja CLI
+## Step 1 — CLI invocation and validation
 
-W `Program.cs`:
+In `Program.cs`:
 
 ```bash
 pluginreg deploy --path ./MyPlugins --profile dev --connection "..." --exclude-steps --workflow
 ```
 
-Walidatory (`CommandValidators.AddDeployValidators`):
+Validators (`CommandValidators.AddDeployValidators`):
 
-- Katalog musi istnieć.
-- Musi istnieć `pluginregistration.json` w tym katalogu (w przeciwnym razie sugestia uruchomienia `init`).
-- `--profile` jest **wymagany**.
-- Połączenie: albo `--connection`, albo komplet zmiennych środowiskowych (`DATAVERSE_URL` / `POWERPLATFORM_*` + ClientId + ClientSecret + TenantId).
+- The directory must exist.
+- `pluginregistration.json` must exist in that directory (otherwise you are prompted to run `init`).
+- `--profile` is **required**.
+- Connection: either `--connection` or a full set of environment variables (`DATAVERSE_URL` / `POWERPLATFORM_*` + ClientId + ClientSecret + TenantId).
 
-Jeśli walidacja przejdzie, tworzony jest `IOrganizationService` (`ServiceClient`) i wywoływane:
+If validation passes, an `IOrganizationService` (`ServiceClient`) is created and:
 
 ```csharp
 var deployService = new PluginDeployService(service, trace);
@@ -61,54 +63,54 @@ deployService.Deploy(workingDirectory, profile, excludeSteps, workflow);
 
 ---
 
-## Krok 2 — Wczytanie konfiguracji
+## Step 2 — Loading configuration
 
 `PluginRegistrationConfig.Load()`:
 
-1. Odczytuje `{workingDirectory}/pluginregistration.json`.
-2. Deserializuje do `Plugins` (lista `PluginDeployEntry`) i `Profiles` (słownik `ProfileSettings`).
+1. Reads `{workingDirectory}/pluginregistration.json`.
+2. Deserializes into `Plugins` (list of `PluginDeployEntry`) and `Profiles` (dictionary of `ProfileSettings`).
 
-**Wybór wpisów dla profilu** (`GetPluginEntries`):
+**Selecting entries for a profile** (`GetPluginEntries`):
 
-- Szuka wpisów, których pole `profile` zawiera nazwę profilu (lub jest puste i profil to "default").
-- Pole `profile` w JSON może być listą oddzieloną przecinkami: `"dev,test,prod"`.
+- Finds entries whose `profile` field contains the profile name (or is empty and the profile is "default").
+- The `profile` field in JSON can be a comma-separated list: `"dev,test,prod"`.
 
-**Ustawienia profilu** (`GetProfileSettings`):
+**Profile settings** (`GetProfileSettings`):
 
-- Zwraca `profiles.<profile>` lub `null`.
+- Returns `profiles.<profile>` or `null`.
 
 ---
 
-## Krok 3 — Rozwiązywanie ścieżek do assembly
+## Step 3 — Resolving assembly paths
 
-Dla każdego wybranego `PluginDeployEntry`:
+For each selected `PluginDeployEntry`:
 
 ```csharp
 config.ResolveAssemblyPaths(entry)
 ```
 
-Logika:
-- Jeśli `assemblyPath` nie ma rozszerzenia → dodaje `*.dll`.
-- Szuka plików w `Path.Combine(workingDir, katalogZPatternu)`.
-- Zwraca posortowaną listę pełnych ścieżek do DLL.
+Logic:
+- If `assemblyPath` has no extension → appends `*.dll`.
+- Searches files under `Path.Combine(workingDir, patternDirectory)`.
+- Returns a sorted list of full paths to DLLs.
 
-Przykład w JSON:
+Example in JSON:
 
 ```json
 "assemblyPath": "bin/Release"
 ```
 
-→ faktycznie szuka `bin/Release/*.dll` względem katalogu z `pluginregistration.json`.
+→ effectively searches `bin/Release/*.dll` relative to the directory containing `pluginregistration.json`.
 
 ---
 
-## Krok 4 — Rejestracja assembly (`RegisterPlugins`)
+## Step 4 — Assembly registration (`RegisterPlugins`)
 
-Dla każdej DLL wykonywane jest `PluginRegistrationService.RegisterPlugins(assemblyPath, skipSteps)`.
+For each DLL, `PluginRegistrationService.RegisterPlugins(assemblyPath, skipSteps)` runs.
 
-### 4.1 Filtrowanie
+### 4.1 Filtering
 
-Pomija pliki zaczynające się od `System.` oraz znane biblioteki SDK (lista w `ReflectionHelper.IgnoredAssemblies`).
+Skips files starting with `System.` and known SDK libraries (list in `ReflectionHelper.IgnoredAssemblies`).
 
 ### 4.2 Reflection-only load
 
@@ -117,144 +119,139 @@ using var context = ReflectionHelper.CreateLoadContext(directory);
 var assembly = context.LoadFromAssemblyPath(...);
 ```
 
-Kontekst zawiera runtime .NET + wszystkie DLL z katalogu wyjściowego. Nie wykonuje kodu.
+The context includes the .NET runtime plus all DLLs from the output directory. Code is not executed.
 
-### 4.3 Wykrywanie pluginów
+### 4.3 Plugin detection
 
-Szuka klas:
+Finds classes that are:
 - `IsClass && !IsAbstract`
-- implementujących interfejs o nazwie `IPlugin`
+- implementing an interface named `IPlugin`
 
-Jeśli nie znajdzie żadnych — pomija plik.
+If none are found — the file is skipped.
 
-### 4.4 Rejestracja assembly w Dataverse (`RegisterAssembly`)
+### 4.4 Registering assembly in Dataverse (`RegisterAssembly`)
 
-1. Bierze **pierwszy** atrybut `[CrmPluginRegistration]` spośród wszystkich typów w assembly (tylko po to, żeby odczytać `IsolationMode`).
-2. Pobiera istniejące `pluginassembly` po **nazwie** assembly (`GetPluginAssemblyByName`).
-3. Zawsze czyta **całą zawartość** pliku DLL i konwertuje do Base64 (`content`).
-4. Buduje/updatuje rekord:
+1. Checks whether the assembly has any `[PluginRegistration]` or `[CustomApiRegistration]` attributes on its types.
+2. Uses the first `[PluginRegistration]` attribute (if any) to read `IsolationMode`.
+3. Fetches existing `pluginassembly` by **name** (`GetPluginAssemblyByName`).
+4. Always reads the **entire** DLL file and converts it to Base64 (`content`).
+5. Builds/updates the record:
    - `name`, `culture`, `version`, `publickeytoken`
    - `sourcetype = 0` (Database)
-   - `isolationmode = 2` (Sandbox) lub `1` (None) — z atrybutu
-5. **Create** lub **Update**.
-6. Po update: `RemoveOrphanedPluginTypes` (patrz niżej).
-7. Jeśli podano `solution` → `AddSolutionComponent` (componentType=91, `addRequiredComponents=true`).
+   - `isolationmode = 2` (Sandbox) or `1` (None) — from the attribute when present
+6. **Create** or **Update**.
+7. After update: `RemoveOrphanedPluginTypes` (see below).
+8. If `solution` is set → `AddSolutionComponent` (componentType=91, `addRequiredComponents=true`).
 
-**Uwaga:** nawet przy `--exclude-steps` assembly jest wgrywane.
+**Note:** even with `--exclude-steps`, the assembly is still uploaded.
 
-### 4.5 Czyszczenie osieroconych typów (`RemoveOrphanedPluginTypes`)
+### 4.5 Cleaning orphaned types (`RemoveOrphanedPluginTypes`)
 
-Gdy assembly jest **aktualizowane**:
+When the assembly is **updated**:
 
-- Pobiera wszystkie istniejące `plugintype` dla tego assembly.
-- Porównuje z typami obecnymi w aktualnie ładowanym assembly.
-- Dla każdego typu, którego już nie ma w DLL:
-  - Usuwa wszystkie kroki (`sdkmessageprocessingstep`) tego typu.
-  - Usuwa sam `plugintype`.
+- Fetches all existing `plugintype` records for that assembly.
+- Compares them with types present in the currently loaded assembly.
+- For each type no longer in the DLL:
+  - Deletes all steps (`sdkmessageprocessingstep`) for that type.
+  - Deletes the `plugintype` itself.
 
-To jest mechanizm czyszczenia po refaktoringu/usunięciu klasy pluginu.
+This cleans up after refactoring or removing a plugin class.
 
 ---
 
-## Krok 5 — Rejestracja kroków (`RegisterPluginSteps`)
+## Step 5 — Step registration (`RegisterPluginSteps`)
 
-Tylko gdy `!excludePluginSteps`.
+Only when `!excludePluginSteps`.
 
-Dla każdego typu pluginu (`IPlugin`):
+For each plugin type (`IPlugin`):
 
-1. `UpsertPluginType` — tworzy lub aktualizuje `plugintype` (kluczem jest `typename = FullName`).
-2. Pobiera istniejące kroki dla tego `plugintype`.
-3. Dla każdego `[CrmPluginRegistration]` na klasie:
-   - Jeśli to **Custom API** (patrz niżej) → osobna ścieżka.
-   - W przeciwnym razie:
-     - `PluginStepNameResolver.ApplyStepName` — jeśli `Name` nie jest podane, generuje `{FullName}.{Stage}` (np. `Sample.Plugins.AccountCreatePlugin.PreOperation`).
-     - `EnvironmentConfigurationResolver.ApplyProfileOverrides(attribute)` — patrz niżej.
-     - `RegisterStep(...)`.
-4. Po przetworzeniu wszystkich atrybutów: usuwa pozostałe kroki z listy `existingSteps` (tylko etapy 10, 20, 40, 50).
+1. `UpsertPluginType` — creates or updates `plugintype` (key: `typename = FullName`).
+2. Fetches existing steps for that `plugintype`.
+3. For each `[PluginRegistration]` on the class:
+   - `PluginStepNameResolver.ApplyStepName` — if `Name` is not set, generates `{FullName}.{Stage}` (e.g. `Sample.Plugins.AccountCreatePlugin.PreOperation`).
+   - `EnvironmentConfigurationResolver.ApplyProfileOverrides(attribute)` — see below.
+   - `RegisterStep(...)`.
+4. For each `[CustomApiRegistration]` on the class:
+   - `RegisterCustomApi(...)` via `CustomApiRegistrationService`.
+5. After processing all attributes: deletes remaining steps from `existingSteps` (only stages 10, 20, 40, 50).
 
-### 5.1 RegisterStep — dopasowanie istniejącego kroku
+### 5.1 RegisterStep — matching an existing step
 
-Kolejność szukania istniejącego kroku:
+Order of lookup for an existing step:
 
-1. Jeśli atrybut ma `Id` (GUID) → szuka po `sdkmessageprocessingstepid`.
-2. W przeciwnym razie szuka po parze:
-   - `name` (po ApplyStepName)
-   - **nazwa wiadomości** SDK (`sdkmessage.name`)
+1. If the attribute has `Id` (GUID) → search by `sdkmessageprocessingstepid`.
+2. Otherwise search by:
+   - `name` (after ApplyStepName)
+   - **SDK message name** (`sdkmessage.name`)
 
-Jeśli nie znajdzie — tworzy nowy.
+If not found — a new step is created.
 
-### 5.2 Rozwiązywanie message + filter
+### 5.2 Resolving message + filter
 
-- Gdy `EntityLogicalName == "none"` (lub ignorowane wielkość liter):
-  - Tylko `sdkmessage` po nazwie wiadomości (np. akcje globalne).
-- W przeciwnym razie:
-  - Szuka `sdkmessagefilter` po `primaryobjecttypecode` + powiązanej wiadomości.
-  - Jeśli nie znajdzie filtra → ostrzeżenie i pominięcie kroku.
+- When `EntityLogicalName == "none"` (case-insensitive):
+  - Uses `sdkmessage` by message name only (e.g. global actions).
+- Otherwise:
+  - Looks up `sdkmessagefilter` by `primaryobjecttypecode` + related message.
+  - If no filter is found → warning and the step is skipped.
 
-### 5.3 Tworzenie/aktualizacja rekordu kroku
+### 5.3 Creating/updating the step record
 
-Ustawiane pola:
-- `name`, `configuration` (unsecure), `description`
+Fields set:
+- `name`, `configuration` (unsecure)
 - `mode` (0=sync, 1=async)
 - `asyncautodelete`
 - `rank` (ExecutionOrder)
 - `stage`
-- `supporteddeployment` (na podstawie `Server` + `Offline`)
-- `plugintypeid`, `sdkmessageid`, `sdkmessagefilterid` (opcjonalnie)
-- `filteringattributes` (znormalizowane, bez spacji)
+- `supporteddeployment` (based on `Server`)
+- `plugintypeid`, `sdkmessageid`, `sdkmessagefilterid` (optional)
+- `filteringattributes` (normalized, no spaces)
 
-Po zapisie kroku:
+After saving the step:
 - `RegisterSecureConfiguration`
 - `RegisterImages`
-- Jeśli solution → `AddSolutionComponent` (typ 92)
+- If solution → `AddSolutionComponent` (type 92)
 
-### 5.4 Secure Configuration
+### 5.4 Secure configuration
 
-Osobny rekord `sdkmessageprocessingstepsecureconfig` powiązany ze stepem.
+Separate `sdkmessageprocessingstepsecureconfig` record linked to the step.
 
-- Jeśli w finalnym atrybucie `SecureConfiguration` jest puste → usuwa istniejący rekord (jeśli był).
-- W przeciwnym razie tworzy lub aktualizuje.
+- If final `SecureConfiguration` is empty → deletes existing record (if any).
+- Otherwise creates or updates.
 
-**Uwaga:** secure config **nie jest** wersjonowana w atrybutach (bezpieczeństwo).
+**Note:** secure config is **not** stored in attributes (security).
 
-### 5.5 Obrazy kroków
+### 5.5 Step images
 
 `PluginStepImageReader.GetImages(type, stepAttribute)`:
 
-- Szuka wszystkich `[CrmPluginStepImage]` na klasie.
-- Dopasowuje po `Stage` + opcjonalnie `Message` (gdy klasa ma wiele stepów na tym samym stage).
-- Dla każdego obrazu tworzy/aktualizuje `sdkmessageprocessingstepimage`.
-- Po wszystkim usuwa obrazy, które nie zostały obsłużone (obsoletne).
+- Finds all `[PluginStepImage]` attributes on the class.
+- Matches by `ImageType` and step `Stage` (PreImage → pre-stages, PostImage → PostOperation).
+- For each image creates/updates `sdkmessageprocessingstepimage`.
+- Afterwards deletes images that were not handled (obsolete).
 
-Pola obrazu:
+Image fields:
 - `name` / `entityalias`
 - `imagetype`
 - `attributes`
-- `messagepropertyname` (automatycznie: `Id` dla Create, `Target` dla większości, specjalne dla Send/SetState itp.)
+- `messagepropertyname` (automatic: `Id` for Create, `Target` for most, special cases for Send/SetState, etc.)
 
 ---
 
-## Krok 6 — Custom API z atrybutów w kodzie
+## Step 6 — Custom API from code attributes
 
-Podczas `RegisterPluginSteps`, jeśli atrybut spełnia:
+During `RegisterPluginSteps`, for each `[CustomApiRegistration]` on the class:
 
-```csharp
-Name is null && Message is not null && Stage is null
-```
+`CustomApiAttributeReader.Read(...)` reads from the class:
+- `[CustomApiRegistration(...)]`
+- All `[CustomApiRequestParameter(...)]` and `[CustomApiResponseProperty(...)]` (filtered by `ApiUniqueName` when the class has multiple APIs).
 
-to wywoływane jest `RegisterCustomApi`.
-
-`CustomApiAttributeReader.Read(...)` czyta z klasy:
-- `[CrmPluginRegistration("unique_name", ...)]`
-- Wszystkie `[CrmCustomApiRequestParameter(...)]` i `[CrmCustomApiResponseProperty(...)]` (z filtrem `ApiUniqueName` gdy klasa ma wiele API).
-
-Następnie `CustomApiRegistrationService.RegisterCustomApi(model, pluginTypeId)` (patrz niżej).
+Then `CustomApiRegistrationService.RegisterCustomApi(model, pluginTypeId)` (see below).
 
 ---
 
-## Krok 7 — Custom API z profilu JSON (`EnsureCustomApis`)
+## Step 7 — Custom API from profile JSON (`EnsureCustomApis`)
 
-Po przetworzeniu wszystkich wpisów pluginów:
+After processing all plugin entries:
 
 ```csharp
 if (profileSettings?.CustomApis.Count > 0)
@@ -264,66 +261,66 @@ if (profileSettings?.CustomApis.Count > 0)
 }
 ```
 
-Dla każdej definicji z `createIfMissing: true`:
+For each definition with `createIfMissing: true`:
 
-1. Szuka `plugintype` po `pluginTypeName`.
-2. Jeśli nie istnieje i `createIfMissing` — błąd (musi być najpierw zarejestrowany typ).
-3. W przeciwnym razie wywołuje `RegisterCustomApi(FromProfileDefinition(...), pluginTypeId)`.
+1. Looks up `plugintype` by `pluginTypeName`.
+2. If it does not exist and `createIfMissing` — error (the type must be registered first).
+3. Otherwise calls `RegisterCustomApi(FromProfileDefinition(...), pluginTypeId)`.
 
-Różnica względem atrybutów:
-- Definicja pochodzi w 100% z `pluginregistration.json` (może nadpisać `displayName`, `pluginTypeName` itp.).
-- `createIfMissing` kontroluje czy dany profil w ogóle próbuje tworzyć API.
+Difference from attributes:
+- Definition comes 100% from `pluginregistration.json` (can override `displayName`, `pluginTypeName`, etc.).
+- `createIfMissing` controls whether this profile attempts to create the API.
 
 ---
 
-## Krok 8 — Szczegóły obsługi Custom API (`CustomApiRegistrationService`)
+## Step 8 — Custom API handling details (`CustomApiRegistrationService`)
 
 ### RegisterCustomApi
 
-1. Pobiera istniejące `customapi` + parametry + odpowiedzi po `uniquename`.
-2. Jeśli nie istnieje → `CreateCustomApiTree`.
-3. Jeśli istnieje:
-   - `RequiresRecreate` → usuwa całe drzewo + tworzy od nowa.
-   - W przeciwnym razie → `UpdateCustomApi` + sync parametrów i odpowiedzi.
+1. Fetches existing `customapi` + parameters + response properties by `uniquename`.
+2. If it does not exist → `CreateCustomApiTree`.
+3. If it exists:
+   - `RequiresRecreate` → deletes the entire tree and recreates.
+   - Otherwise → `UpdateCustomApi` + sync parameters and response properties.
 
-**Co powoduje pełny recreate (`RequiresRecreate`):**
-- zmiana `bindingtype`
-- zmiana `isfunction`
-- zmiana `boundentitylogicalname`
-- zmiana `type` lub `logicalentityname` dowolnego parametru/odpowiedzi
-- zmiana `isoptional` (dla request parameters)
+**What triggers full recreate (`RequiresRecreate`):**
+- change of `bindingtype`
+- change of `isfunction`
+- change of `boundentitylogicalname`
+- change of `type` or `logicalentityname` on any parameter/response property
+- change of `isoptional` (for request parameters)
 
-Te pola są "immutable" po utworzeniu Custom API.
+These fields are immutable after Custom API creation.
 
 ### Create / Update / Sync
 
-- Tworzy `customapi`, potem osobno `customapirequestparameter` i `customapiresponseproperty`.
-- Przy sync:
-  - usuwa te, których nie ma w modelu
-  - tworzy nowe
-  - aktualizuje istniejące (tylko displayname/description/isoptional)
-- Po każdej operacji (tworzenie Custom API + parametry) dodaje komponenty do solution (jeśli podano):
+- Creates `customapi`, then `customapirequestparameter` and `customapiresponseproperty` separately.
+- On sync:
+  - deletes those not in the model
+  - creates new ones
+  - updates existing (displayname/description/isoptional only)
+- After each operation (Custom API + parameters) adds components to the solution (if specified):
   - 372 = CustomApi
   - 371 = CustomApiRequestParameter
   - 373 = CustomApiResponseProperty
 
-`EnsureCustomApis` używa ostatniego solution z przetworzonych wpisów `plugins[]`.
+`EnsureCustomApis` uses the last solution from processed `plugins[]` entries.
 
 ---
 
-## Krok 9 — Profile overrides i zmienne środowiskowe
+## Step 9 — Profile overrides and environment variables
 
-`EnvironmentConfigurationResolver` stosowany jest **przed** zapisem stepu:
+`EnvironmentConfigurationResolver` is applied **before** saving a step:
 
-1. Szuka `stepOverrides` w profilu:
-   - najpierw po `Id` (GUID z atrybutu)
-   - potem po `Name` (wygenerowanej lub jawnej)
-2. Jeśli znajdzie `StepOverride`:
-   - nadpisuje `UnSecureConfiguration`, `SecureConfiguration`, `Description` (tylko jeśli wartość w JSON nie jest `null`).
-3. Na końcu (zawsze) rozwija wzorce `${NAZWA_ZMIENNEJ}` używając `Environment.GetEnvironmentVariable`.
-   - Jeśli zmienna nie istnieje — wyjątek.
+1. Looks up `stepOverrides` in the profile:
+   - first by `Id` (GUID from the attribute)
+   - then by `Name` (generated or explicit)
+2. If a `StepOverride` is found:
+   - overrides `UnSecureConfiguration` and `SecureConfiguration` (only when the JSON value is not `null`).
+3. Finally (always) expands `${VARIABLE_NAME}` patterns using `Environment.GetEnvironmentVariable`.
+   - If the variable is missing — throws an exception.
 
-Przykład w JSON:
+Example in JSON:
 
 ```json
 "stepOverrides": {
@@ -333,122 +330,110 @@ Przykład w JSON:
 }
 ```
 
-Podobny mechanizm działa dla definicji Custom API z profilu (`GetCustomApiOverride`).
+A similar mechanism applies to Custom API definitions from the profile (`GetCustomApiOverride`).
 
 ---
 
-## Krok 10 — Workflow Activities (`--workflow`)
+## Step 10 — Workflow activities (`--workflow`)
 
-Osobna ścieżka wywoływana tylko gdy `--workflow`:
-
-- `GetWorkflowActivityTypes` — klasy dziedziczące (po nazwie) od `CodeActivity`.
-- `RegisterAssembly` (z flagą `isWorkflowActivity`).
-- `RegisterWorkflowActivityTypes`:
-  - Tworzy/aktualizuje `plugintype` z polami `name`, `friendlyname`, `description`, `workflowactivitygroupname`, `isworkflowactivity`.
-  - Nie rejestruje kroków (workflow activity to inny mechanizm).
-
-Atrybut używany do workflow:
-
-```csharp
-[CrmPluginRegistration("Name", "Friendly", "Desc", "Group", IsolationModeEnum.Sandbox)]
-```
+When `--workflow` is passed, the tool attempts workflow registration, but **workflow activity attributes are no longer supported** in the current attribute model. The operation logs a message and does not register workflow metadata from attributes.
 
 ---
 
-## Krok 11 — Dodawanie do solution
+## Step 11 — Adding to solution
 
-Za każdym razem gdy `SolutionUniqueName` jest ustawione (z wpisu `plugins[].solution`):
+Whenever `SolutionUniqueName` is set (from `plugins[].solution`):
 
 - `AddSolutionComponent` (Execute `AddSolutionComponent` request).
-- Dla assembly: `addRequiredComponents: true`.
-- Dla stepów i Custom API: domyślnie `false` (z wyjątkiem głównego Custom API).
+- For assembly: `addRequiredComponents: true`.
+- For steps and Custom API: default `false` (except the main Custom API record).
 
-Rozwiązanie jest pobierane z pierwszego/pierwszych wpisów; dla Custom API z profilu — z ostatniego.
-
----
-
-## Podsumowanie tego, co jest tworzone/aktualizowane/usuwane
-
-| Element Dataverse                    | Tworzony/aktualizowany gdy...                  | Usuwany gdy... |
-|--------------------------------------|------------------------------------------------|---------------|
-| `pluginassembly`                     | Zawsze (dla każdej pasującej DLL)              | Nigdy bezpośrednio |
-| `plugintype` (plugin)                | Dla każdej klasy `IPlugin` z atrybutem         | Przy orphaned types + przy recreate Custom API |
-| `sdkmessageprocessingstep`           | Dla każdego `[CrmPluginRegistration]` step     | Obsolete steps (po atrybutach), orphaned |
-| `sdkmessageprocessingstepimage`      | Dla każdego pasującego `[CrmPluginStepImage]`  | Obsolete images |
-| `sdkmessageprocessingstepsecureconfig` | Gdy `SecureConfiguration` niepuste            | Gdy secure config jest puste w finalnym atrybucie |
-| `customapi`                          | Z atrybutu lub z profilu (`createIfMissing`)   | Przy `RequiresRecreate` |
-| `customapirequestparameter`          | Z atrybutów lub profilu                        | Przy sync (brak w modelu) lub recreate |
-| `customapiresponseproperty`          | Analogicznie                                   | Analogicznie |
-| Solution components                  | Gdy podano `solution`                          | Nie (AddSolutionComponent nie usuwa) |
+The solution name comes from plugin entries; for profile Custom APIs — from the last entry.
 
 ---
 
-## Ważne zachowania i pułapki
+## Summary of what is created/updated/deleted
 
-1. **Brak transakcji** — operacje są wykonywane sekwencyjnie. Częściowa rejestracja jest możliwa przy błędzie w środku.
-
-2. **Dopasowanie kroków** opiera się na nazwie kroku + nazwie wiadomości. Zmiana nazwy kroku w kodzie bez `Id` spowoduje utworzenie nowego kroku (stary zostanie usunięty jako obsolete).
-
-3. **Id w atrybucie** (`Id = "guid"`) pozwala na stabilne aktualizowanie tego samego rekordu kroku niezależnie od nazwy.
-
-4. **Custom API recreate** jest destrukcyjny — usuwa stare parametry i odpowiedzi.
-
-5. **createIfMissing** w profilu działa **tylko** dla wpisów z `createIfMissing: true`. Domyślnie po `init` tylko pierwszy profil ma `true`.
-
-6. **Zmienne środowiskowe** są wymagane — brak `${VAR}` rzuca wyjątek w trakcie deployu.
-
-7. **Profile "default"** — specjalna obsługa gdy nie podasz `--profile` lub użyjesz wartości `default`.
-
-8. **Kolejność** w `plugins[]` ma znaczenie przy wyborze solution dla Custom API z profilu (bierze `entries.LastOrDefault()`).
-
-9. **DLL musi być zbudowane** przed deployem — narzędzie nie wywołuje `dotnet build`.
-
-10. **Reflection load** nie widzi typów spoza kontekstu — upewnij się, że wszystkie zależności DLL są obok lub w katalogu.
+| Dataverse entity                     | Created/updated when...                          | Deleted when... |
+|--------------------------------------|--------------------------------------------------|-----------------|
+| `pluginassembly`                     | Always (for each matching DLL)                   | Never directly |
+| `plugintype` (plugin)                | For each `IPlugin` class with attributes         | Orphaned types + Custom API recreate |
+| `sdkmessageprocessingstep`           | For each `[PluginRegistration]` step           | Obsolete steps (after attributes), orphaned |
+| `sdkmessageprocessingstepimage`      | For each matching `[PluginStepImage]`            | Obsolete images |
+| `sdkmessageprocessingstepsecureconfig` | When `SecureConfiguration` is non-empty        | When secure config is empty in final attribute |
+| `customapi`                          | From attribute or profile (`createIfMissing`)    | On `RequiresRecreate` |
+| `customapirequestparameter`          | From attributes or profile                       | On sync (missing from model) or recreate |
+| `customapiresponseproperty`          | Same as above                                    | Same |
+| Solution components                  | When `solution` is specified                     | No (AddSolutionComponent does not remove) |
 
 ---
 
-## Typowy pełny przebieg
+## Important behavior and pitfalls
+
+1. **No transactions** — operations run sequentially. Partial registration is possible if an error occurs mid-run.
+
+2. **Step matching** relies on step name + message name. Changing the step name in code without `Id` creates a new step (the old one is deleted as obsolete).
+
+3. **`Id` on the attribute** (`Id = "guid"`) enables stable updates of the same step record regardless of name.
+
+4. **Custom API recreate** is destructive — it deletes old parameters and response properties.
+
+5. **`createIfMissing` in the profile** applies **only** to entries with `createIfMissing: true`. By default after `init`, only the first profile has `true`.
+
+6. **Environment variables** are required — a missing `${VAR}` throws during deploy.
+
+7. **"default" profile** — special handling when `--profile` is omitted or set to `default`.
+
+8. **Order** in `plugins[]` matters when choosing the solution for profile Custom APIs (uses `entries.LastOrDefault()`).
+
+9. **DLL must be built** before deploy — the tool does not run `dotnet build`.
+
+10. **Reflection load** does not see types outside the context — ensure all DLL dependencies are alongside or in the directory.
+
+---
+
+## Typical full run
 
 ```bash
 dotnet build -c Release
 pluginreg deploy --path samples/Sample.Plugins --profile dev
 ```
 
-Co się stanie:
+What happens:
 
-1. Połączenie.
-2. Wczytanie JSON → wpis dla "dev", solution=SampleSolution.
-3. Znalezienie `bin/Release/*.dll`.
-4. Dla `Sample.Plugins.dll`:
-   - Wgranie assembly (create/update).
-   - Dla `AccountCreatePlugin` → upsert plugintype + step PreOperation + obrazy (jeśli są).
-   - Dla `ProcessAccountCustomApiPlugin` → rejestracja Custom API + parametry z atrybutów.
-5. Po pluginach → EnsureCustomApis (dla dev ma createIfMissing).
-6. Dodanie wszystkich komponentów do `SampleSolution`.
-
----
-
-## Relacja z innymi komendami
-
-| Komenda | Kierunek | Co robi w kontekście deploy |
-|---------|----------|-----------------------------|
-| `init`  | — | Tworzy szkielet `pluginregistration.json` |
-| `sync`  | Dataverse → kod | Nadpisuje atrybuty na podstawie aktualnego stanu (odwrotność części deploy) |
-| `deploy` | kod + JSON → Dataverse | Jedyna komenda, która wgrywa DLL i tworzy metadane rejestracji |
+1. Connect.
+2. Load JSON → entry for "dev", solution=SampleSolution.
+3. Find `bin/Release/*.dll`.
+4. For `Sample.Plugins.dll`:
+   - Upload assembly (create/update).
+   - For `AccountCreatePlugin` → upsert plugintype + step + images (if any).
+   - For `ProcessAccountCustomApiPlugin` → register Custom API + parameters from attributes.
+5. After plugins → EnsureCustomApis (for dev with createIfMissing).
+6. Add all components to `SampleSolution`.
 
 ---
 
-## W skrócie
+## Relationship with other commands
 
-`deploy` to **pełny pipeline rejestracji**:
+| Command | Direction | Role relative to deploy |
+|---------|-----------|-------------------------|
+| `init`  | — | Creates `pluginregistration.json` scaffold |
+| `sync`  | Dataverse → code | Overwrites attributes from current state (partial inverse of deploy) |
+| `deploy` | code + JSON → Dataverse | Only command that uploads DLL and creates registration metadata |
 
-- ładuje konfigurację per-profil,
-- reflektuje zbudowane DLL-e,
-- wgrywa assembly,
-- tworzy/aktualizuje typy pluginów,
-- zakłada lub aktualizuje stepy + obrazy + secure config (z nadpisaniami z profilu i zmiennych env),
-- obsługuje Custom API zarówno z atrybutów jak i z JSON,
-- czyści to, co zniknęło z kodu,
-- opcjonalnie dodaje wszystko do solution.
+---
 
-Działa deterministycznie na podstawie atrybutów w kodzie + `pluginregistration.json` + stanu w Dataverse.
+## In short
+
+`deploy` is the **full registration pipeline**:
+
+- loads per-profile configuration,
+- reflects over built DLLs,
+- uploads the assembly,
+- creates/updates plugin types,
+- creates or updates steps + images + secure config (with profile and env overrides),
+- handles Custom API from both attributes and JSON,
+- cleans up what disappeared from code,
+- optionally adds everything to a solution.
+
+It runs deterministically based on attributes in code + `pluginregistration.json` + state in Dataverse.

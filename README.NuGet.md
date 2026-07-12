@@ -1,59 +1,64 @@
 # PluginRegistration
 
-Attributes and tooling for registering Dataverse (Dynamics 365) plugins and Custom APIs using source-code attributes.
+Attributes and tooling for registering Dataverse (Dynamics 365) plugins and Custom APIs from source-code attributes.
+
+Full documentation: [README.md](README.md) and [docs/](docs/).
 
 ## Packages
 
-| Package                              | Purpose                                      |
-|--------------------------------------|----------------------------------------------|
-| `PluginRegistration.Attributes`      | Attributes to decorate plugin classes        |
-| `PluginRegistration.Tool`            | CLI tool (`pluginreg`) for deploy/sync/init  |
-| `PluginRegistration.Core`            | Core library (rarely used directly)          |
+| Package | Purpose |
+|---------|---------|
+| `PluginRegistration.Attributes` | Attributes to decorate plugin classes |
+| `PluginRegistration.Tool` | CLI tool (`pluginreg`) for deploy/sync/init |
+| `PluginRegistration.Core` | Core library (rarely used directly) |
 
 ## Installation
 
 ```bash
-# Attributes (add to your plugin project)
 dotnet add package PluginRegistration.Attributes
-
-# CLI Tool (global)
 dotnet tool install --global PluginRegistration.Tool
 ```
 
-## Basic Usage
+See [docs/installation.md](docs/installation.md) for build-from-source and private feeds.
 
-### 1. Decorate your plugin
+## Basic usage
+
+### Plugin step
 
 ```csharp
 using Microsoft.Xrm.Sdk;
 using PluginRegistration.Attributes;
 
-[CrmPluginRegistration(
-    "Create", 
-    "account", 
-    StageEnum.PreOperation, 
-    ExecutionModeEnum.Synchronous, 
-    "", 
-    1, 
-    IsolationModeEnum.Sandbox,
-    "Account Create Plugin")]
+[PluginRegistration(
+    MessageTypeEnum.Create,
+    "account",
+    StageEnum.PostOperation,
+    ExecutionModeEnum.Synchronous,
+    ["name"],
+    1)]
 public class AccountCreatePlugin : IPlugin
 {
-    public void Execute(IServiceProvider serviceProvider)
-    {
-        // plugin logic
-    }
+    public void Execute(IServiceProvider serviceProvider) { }
 }
 ```
 
-### 2. Generate configuration and deploy
+### Custom API
+
+```csharp
+[CustomApiRegistration("sample_ProcessAccount", FriendlyName = "Process Account")]
+[CustomApiRequestParameter("AccountId", CustomApiParameterTypeEnum.String, IsRequired = true)]
+[CustomApiResponseProperty("Success", CustomApiParameterTypeEnum.Boolean)]
+public class ProcessAccountCustomApiPlugin : IPlugin
+{
+    public void Execute(IServiceProvider serviceProvider) { }
+}
+```
+
+### Deploy
 
 ```bash
-# Create pluginregistration.json
 pluginreg init --path . --profiles dev,test,prod
-
-# Deploy to Dataverse
 pluginreg deploy --path . --profile dev
 ```
 
-For Custom APIs, step images, and advanced configuration see the full documentation in the repository.
+More: [docs/getting-started.md](docs/getting-started.md), [docs/plugin-steps.md](docs/plugin-steps.md), [docs/custom-api.md](docs/custom-api.md).
