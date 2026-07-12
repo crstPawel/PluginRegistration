@@ -1,23 +1,5 @@
 name: Publish NuGet Packages
 
-on:
-  release:
-    types: [published]
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Opcjonalna wersja (nadpisuje wersję z Directory.Build.props). Zostaw puste, aby użyć wersji z props.'
-        required: false
-        type: string
-      publish:
-        description: 'Opublikuj pakiety na nuget.org'
-        required: true
-        default: 'true'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
-
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -26,10 +8,9 @@ env:
 jobs:
   build-and-publish:
     name: Build & Publish NuGet
-    runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write   # Wymagane dla NuGet Trusted Publishing (OIDC)
+      id-token: write   
 
     steps:
       - name: Checkout repository
@@ -55,15 +36,10 @@ jobs:
         id: version
         shell: bash
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-            echo "Version override from input: ${{ github.event.inputs.version }}"
-          else
-            # Odczytaj wersję z Directory.Build.props
-            VER=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -1 || true)
-            echo "version=$VER" >> $GITHUB_OUTPUT
-            echo "Version from Directory.Build.props: $VER"
-          fi
+          # Odczytaj wersję z Directory.Build.props
+          VER=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -1 || true)
+          echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "Version from Directory.Build.props: $VER"       
 
       - name: Pack NuGet packages
         run: |
@@ -85,41 +61,20 @@ jobs:
           retention-days: 30
 
       - name: Get OIDC token for NuGet Trusted Publishing
-        # Oficjalny sposób z dokumentacji NuGet (curl + OIDC JWT jako api-key)
-        # https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing
-        if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
         id: nuget-oidc
-        run: |
-          TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api.nuget.org" | jq -r '.value' || echo "")
-          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+        with:
+          user: psobczak
+          
 
       - name: Publish to NuGet.org
-        if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
-        env:
-          # OIDC token z Trusted Publishing (musi pasować do polityki 'psobczak')
-          NUGET_API_KEY: ${{ steps.nuget-oidc.outputs.token || secrets.NUGET_API_KEY }}
         run: |
-          if [ -z "$NUGET_API_KEY" ]; then
-            echo "::warning::No OIDC token and no NUGET_API_KEY secret. Skipping publish."
-            exit 0
-          fi
-
           echo "Pushing packages using OIDC token..."
           dotnet nuget push "${{ env.ARTIFACTS_DIR }}/*.nupkg" \
             --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
 
       - name: Publish summary
-        if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
-        env:
-          NUGET_API_KEY: ${{ steps.nuget-oidc.outputs.token || secrets.NUGET_API_KEY }}
         run: |
-          if [ -z "$NUGET_API_KEY" ]; then
-            echo "⚠️ Publish skipped (no OIDC token / API key)" >> $GITHUB_STEP_SUMMARY
-            exit 0
-          fi
           echo "✅ Pakiety NuGet zostały opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Opublikowane pakiety:" >> $GITHUB_STEP_SUMMARY
