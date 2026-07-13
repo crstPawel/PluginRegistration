@@ -2,6 +2,7 @@ using Microsoft.Xrm.Sdk;
 using PluginRegistration.Attributes;
 using PluginRegistration.Core.Config;
 using PluginRegistration.Core.Connection;
+using PluginRegistration.Core.Model.Entities;
 
 namespace PluginRegistration.Core.Registration;
 
@@ -107,13 +108,13 @@ public sealed class CustomApiRegistrationService
         CustomApiRegistrationModel model,
         Guid pluginTypeId)
     {
-        var update = new Entity("customapi", existing.Api.Id)
+        var update = new Entity(CustomAPI.EntityLogicalName, existing.Api.Id)
         {
             ["displayname"] = model.DisplayName,
             ["description"] = model.Description,
             ["isprivate"] = model.IsPrivate,
             ["allowedcustomprocessingsteptype"] = new OptionSetValue((int)model.AllowedCustomProcessingStepType),
-            ["plugintypeid"] = new EntityReference("plugintype", pluginTypeId)
+            ["plugintypeid"] = new EntityReference(PluginType.EntityLogicalName, pluginTypeId)
         };
 
         _trace.WriteLine("Updating Custom API '{0}'", model.UniqueName);
@@ -138,7 +139,7 @@ public sealed class CustomApiRegistrationService
             if (!desired.ContainsKey(uniqueName))
             {
                 _trace.WriteLine("Deleting Custom API request parameter '{0}'", uniqueName);
-                _service.Delete("customapirequestparameter", current.Id);
+                _service.Delete(CustomAPIRequestParameter.EntityLogicalName, current.Id);
             }
         }
 
@@ -175,7 +176,7 @@ public sealed class CustomApiRegistrationService
             if (!desired.ContainsKey(uniqueName))
             {
                 _trace.WriteLine("Deleting Custom API response property '{0}'", uniqueName);
-                _service.Delete("customapiresponseproperty", current.Id);
+                _service.Delete(CustomAPIResponseProperty.EntityLogicalName, current.Id);
             }
         }
 
@@ -281,7 +282,7 @@ public sealed class CustomApiRegistrationService
             _trace.WriteLine(
                 "Deleting Custom API request parameter '{0}'",
                 parameter.GetAttributeValue<string>("uniquename"));
-            _service.Delete("customapirequestparameter", parameter.Id);
+            _service.Delete(CustomAPIRequestParameter.EntityLogicalName, parameter.Id);
         }
 
         foreach (var property in _queries.GetCustomApiResponseProperties(customApiId))
@@ -289,16 +290,16 @@ public sealed class CustomApiRegistrationService
             _trace.WriteLine(
                 "Deleting Custom API response property '{0}'",
                 property.GetAttributeValue<string>("uniquename"));
-            _service.Delete("customapiresponseproperty", property.Id);
+            _service.Delete(CustomAPIResponseProperty.EntityLogicalName, property.Id);
         }
 
         _trace.WriteLine("Deleting Custom API '{0}'", customApiId);
-        _service.Delete("customapi", customApiId);
+        _service.Delete(CustomAPI.EntityLogicalName, customApiId);
     }
 
     private static Entity BuildCustomApiEntity(CustomApiRegistrationModel model, Guid pluginTypeId)
     {
-        var record = new Entity("customapi")
+        var record = new Entity(CustomAPI.EntityLogicalName)
         {
             ["uniquename"] = model.UniqueName,
             ["name"] = model.UniqueName,
@@ -308,7 +309,7 @@ public sealed class CustomApiRegistrationService
             ["isfunction"] = model.IsFunction,
             ["isprivate"] = model.IsPrivate,
             ["allowedcustomprocessingsteptype"] = new OptionSetValue((int)model.AllowedCustomProcessingStepType),
-            ["plugintypeid"] = new EntityReference("plugintype", pluginTypeId)
+            ["plugintypeid"] = new EntityReference(PluginType.EntityLogicalName, pluginTypeId)
         };
 
         if (!string.IsNullOrWhiteSpace(model.BoundEntityLogicalName))
@@ -321,9 +322,9 @@ public sealed class CustomApiRegistrationService
 
     private Guid CreateRequestParameter(Guid customApiId, CustomApiParameterModel parameter)
     {
-        var record = new Entity("customapirequestparameter")
+        var record = new Entity(CustomAPIRequestParameter.EntityLogicalName)
         {
-            ["customapiid"] = new EntityReference("customapi", customApiId),
+            ["customapiid"] = new EntityReference(CustomAPI.EntityLogicalName, customApiId),
             ["uniquename"] = parameter.UniqueName,
             ["name"] = parameter.UniqueName,
             ["displayname"] = parameter.DisplayName,
@@ -343,7 +344,7 @@ public sealed class CustomApiRegistrationService
 
     private void UpdateRequestParameter(Guid parameterId, CustomApiParameterModel parameter)
     {
-        var record = new Entity("customapirequestparameter", parameterId)
+        var record = new Entity(CustomAPIRequestParameter.EntityLogicalName, parameterId)
         {
             ["displayname"] = parameter.DisplayName,
             ["description"] = parameter.Description,
@@ -356,9 +357,9 @@ public sealed class CustomApiRegistrationService
 
     private Guid CreateResponseProperty(Guid customApiId, CustomApiParameterModel property)
     {
-        var record = new Entity("customapiresponseproperty")
+        var record = new Entity(CustomAPIResponseProperty.EntityLogicalName)
         {
-            ["customapiid"] = new EntityReference("customapi", customApiId),
+            ["customapiid"] = new EntityReference(CustomAPI.EntityLogicalName, customApiId),
             ["uniquename"] = property.UniqueName,
             ["name"] = property.UniqueName,
             ["displayname"] = property.DisplayName,
@@ -377,7 +378,7 @@ public sealed class CustomApiRegistrationService
 
     private void UpdateResponseProperty(Guid propertyId, CustomApiParameterModel property)
     {
-        var record = new Entity("customapiresponseproperty", propertyId)
+        var record = new Entity(CustomAPIResponseProperty.EntityLogicalName, propertyId)
         {
             ["displayname"] = property.DisplayName,
             ["description"] = property.Description

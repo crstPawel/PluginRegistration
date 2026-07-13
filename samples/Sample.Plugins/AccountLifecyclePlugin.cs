@@ -12,18 +12,19 @@ namespace Sample.Plugins
     [PluginRegistration(MessageTypeEnum.Create, Account.EntityLogicalName, StageEnum.PreOperation, ExecutionModeEnum.Synchronous, [Account.Fields.Name], 1)]
     [PluginRegistration(MessageTypeEnum.Update, Account.EntityLogicalName, StageEnum.PostOperation, ExecutionModeEnum.Synchronous, [Account.Fields.Name], 1)]
     [PluginStepImage("PostImage", ImageTypeEnum.PostImage, "name,telephone1")]
-    public class AccountLifecyclePlugin : IPlugin
+    public class AccountLifecyclePlugin : PluginBase
     {
-        public void Execute(IServiceProvider serviceProvider)
+        public AccountLifecyclePlugin(Type pluginClassName) : base(pluginClassName)
         {
-            // Shared handler for Create and Update pre-operation steps.
+            
         }
+
     }
     
     [CustomApiRegistration("sample_AccountLifecycle", "Account Lifecycle")]
-    public class AccountLifecycleCustomApi : IPlugin
+    public class AccountLifecycleCustomApi : PluginBase
     {
-        public void Execute(IServiceProvider serviceProvider)
+        public AccountLifecycleCustomApi(Type pluginClassName) : base(pluginClassName)
         {
             // Shared handler for Create and Update pre-operation steps.
         }

@@ -1,5 +1,6 @@
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
+using PluginRegistration.Core.Model.Entities;
 
 namespace PluginRegistration.Core.Registration;
 
@@ -14,14 +15,14 @@ public sealed class DataverseQueries
 
     public Entity? GetPluginAssemblyByName(string name)
     {
-        var query = new QueryExpression("pluginassembly")
+        var query = new QueryExpression(PluginAssembly.EntityLogicalName)
         {
-            ColumnSet = new ColumnSet("pluginassemblyid", "name", "packageid"),
+            ColumnSet = new ColumnSet(PluginAssembly.Fields.Id, PluginAssembly.Fields.Name, PluginAssembly.Fields.PackageId),
             Criteria = new FilterExpression
             {
                 Conditions =
                 {
-                    new ConditionExpression("name", ConditionOperator.Equal, name)
+                    new ConditionExpression(PluginAssembly.Fields.Name, ConditionOperator.Equal, name)
                 }
             },
             TopCount = 1
@@ -32,15 +33,15 @@ public sealed class DataverseQueries
 
     public Entity? GetPluginPackageByName(string name)
     {
-        QueryExpression query = new QueryExpression("pluginpackage")
+        QueryExpression query = new QueryExpression(PluginPackage.EntityLogicalName)
         {
-            ColumnSet = new ColumnSet("pluginpackageid", "name", "uniquename"),
+            ColumnSet = new ColumnSet(PluginPackage.Fields.PluginPackageId, PluginPackage.Fields.Name, PluginPackage.Fields.UniqueName),
             Criteria = new FilterExpression(LogicalOperator.Or)
             {
                 Conditions =
                 {
-                    new ConditionExpression("name", ConditionOperator.Equal, name),
-                    new ConditionExpression("uniquename", ConditionOperator.Equal, name)
+                    new ConditionExpression(PluginPackage.Fields.Name, ConditionOperator.Equal, name),
+                    new ConditionExpression(PluginPackage.Fields.UniqueName, ConditionOperator.Equal, name)
                 }
             },
             TopCount = 1
@@ -51,17 +52,17 @@ public sealed class DataverseQueries
 
     public List<Entity> GetPluginAssembliesForPackage(Guid packageId)
     {
-        QueryExpression query = new QueryExpression("pluginassembly")
+        QueryExpression query = new QueryExpression(PluginAssembly.EntityLogicalName)
         {
-            ColumnSet = new ColumnSet("pluginassemblyid", "name"),
+            ColumnSet = new ColumnSet(PluginAssembly.Fields.PluginAssemblyId, PluginAssembly.Fields.Name),
             Criteria = new FilterExpression
             {
                 Conditions =
                 {
-                    new ConditionExpression("packageid", ConditionOperator.Equal, packageId)
+                    new ConditionExpression(PluginAssembly.Fields.PackageId, ConditionOperator.Equal, packageId)
                 }
             },
-            Orders = { new OrderExpression("name", OrderType.Ascending) }
+            Orders = { new OrderExpression(PluginAssembly.Fields.Name, OrderType.Ascending) }
         };
 
         return _service.RetrieveMultiple(query).Entities.ToList();
@@ -69,28 +70,28 @@ public sealed class DataverseQueries
 
     public List<Entity> GetPluginTypes(Guid assemblyId, bool? isWorkflowActivity = null)
     {
-        var query = new QueryExpression("plugintype")
+        var query = new QueryExpression(PluginType.EntityLogicalName)
         {
             ColumnSet = new ColumnSet(
-                "plugintypeid",
-                "name",
-                "typename",
-                "friendlyname",
-                "description",
-                "workflowactivitygroupname",
-                "isworkflowactivity"),
+                PluginType.Fields.PluginTypeId,
+                PluginType.Fields.Name,
+                PluginType.Fields.TypeName,
+                PluginType.Fields.FriendlyName,
+                PluginType.Fields.Description,
+                PluginType.Fields.WorkflowActivityGroupName,
+                PluginType.Fields.IsWorkflowActivity),
             Criteria = new FilterExpression
             {
                 Conditions =
                 {
-                    new ConditionExpression("pluginassemblyid", ConditionOperator.Equal, assemblyId)
+                    new ConditionExpression(PluginType.Fields.PluginAssemblyId, ConditionOperator.Equal, assemblyId)
                 }
             }
         };
 
         if (isWorkflowActivity.HasValue)
         {
-            query.Criteria.AddCondition("isworkflowactivity", ConditionOperator.Equal, isWorkflowActivity.Value);
+            query.Criteria.AddCondition(PluginType.Fields.IsWorkflowActivity, ConditionOperator.Equal, isWorkflowActivity.Value);
         }
 
         return _service.RetrieveMultiple(query).Entities.ToList();
@@ -98,27 +99,27 @@ public sealed class DataverseQueries
 
     public List<Entity> GetPluginSteps(Guid pluginTypeId)
     {
-        var query = new QueryExpression("sdkmessageprocessingstep")
+        var query = new QueryExpression(SdkMessageProcessingStep.EntityLogicalName)
         {
             ColumnSet = new ColumnSet(
-                "sdkmessageprocessingstepid",
-                "name",
-                "mode",
-                "rank",
-                "stage",
-                "configuration",
-                "description",
-                "filteringattributes",
-                "asyncautodelete",
-                "supporteddeployment",
-                "sdkmessageid",
-                "sdkmessagefilterid",
-                "plugintypeid"),
+                SdkMessageProcessingStep.Fields.SdkMessageProcessingStepId,
+                SdkMessageProcessingStep.Fields.Name,
+                SdkMessageProcessingStep.Fields.Mode,
+                SdkMessageProcessingStep.Fields.Rank,
+                SdkMessageProcessingStep.Fields.Stage,
+                SdkMessageProcessingStep.Fields.Configuration,
+                SdkMessageProcessingStep.Fields.Description,
+                SdkMessageProcessingStep.Fields.FilteringAttributes,
+                SdkMessageProcessingStep.Fields.AsyncAutoDelete,
+                SdkMessageProcessingStep.Fields.SupportedDeployment,
+                SdkMessageProcessingStep.Fields.SdkMessageId,
+                SdkMessageProcessingStep.Fields.SdkMessageFilterId,
+                SdkMessageProcessingStep.Fields.PluginTypeId),
             Criteria = new FilterExpression
             {
                 Conditions =
                 {
-                    new ConditionExpression("plugintypeid", ConditionOperator.Equal, pluginTypeId)
+                    new ConditionExpression(SdkMessageProcessingStep.Fields.PluginTypeId, ConditionOperator.Equal, pluginTypeId)
                 }
             }
         };
@@ -128,20 +129,20 @@ public sealed class DataverseQueries
 
     public List<Entity> GetPluginStepImages(Guid stepId)
     {
-        var query = new QueryExpression("sdkmessageprocessingstepimage")
+        var query = new QueryExpression(SdkMessageProcessingStepImage.EntityLogicalName)
         {
             ColumnSet = new ColumnSet(
-                "sdkmessageprocessingstepimageid",
-                "name",
-                "entityalias",
-                "imagetype",
-                "attributes",
-                "messagepropertyname"),
+                SdkMessageProcessingStepImage.Fields.SdkMessageProcessingStepImageId,
+                SdkMessageProcessingStepImage.Fields.Name,
+                SdkMessageProcessingStepImage.Fields.EntityAlias,
+                SdkMessageProcessingStepImage.Fields.ImageType,
+                SdkMessageProcessingStepImage.Fields.Attributes1,
+                SdkMessageProcessingStepImage.Fields.MessagePropertyName),
             Criteria = new FilterExpression
             {
                 Conditions =
                 {
-                    new ConditionExpression("sdkmessageprocessingstepid", ConditionOperator.Equal, stepId)
+                    new ConditionExpression(SdkMessageProcessingStepImage.Fields.SdkMessageProcessingStepId, ConditionOperator.Equal, stepId)
                 }
             }
         };
@@ -222,25 +223,25 @@ public sealed class DataverseQueries
 
     public CustomApiDetails? GetCustomApiDetails(string uniqueName)
     {
-        var query = new QueryExpression("customapi")
+        var query = new QueryExpression(CustomAPI.EntityLogicalName)
         {
             ColumnSet = new ColumnSet(
-                "customapiid",
-                "uniquename",
-                "name",
-                "displayname",
-                "description",
-                "bindingtype",
-                "boundentitylogicalname",
-                "isfunction",
-                "isprivate",
-                "allowedcustomprocessingsteptype",
-                "plugintypeid"),
+                CustomAPI.Fields.CustomAPIId,
+                CustomAPI.Fields.UniqueName,
+                CustomAPI.Fields.Name,
+                CustomAPI.Fields.DisplayName,
+                CustomAPI.Fields.Description,
+                CustomAPI.Fields.BindingType,
+                CustomAPI.Fields.BoundEntityLogicalName,
+                CustomAPI.Fields.IsFunction,
+                CustomAPI.Fields.IsPrivate,
+                CustomAPI.Fields.AllowedCustomProcessingStepType,
+                CustomAPI.Fields.PluginTypeId),
             Criteria = new FilterExpression
             {
                 Conditions =
                 {
-                    new ConditionExpression("uniquename", ConditionOperator.Equal, uniqueName)
+                    new ConditionExpression(CustomAPI.Fields.UniqueName, ConditionOperator.Equal, uniqueName)
                 }
             },
             TopCount = 1
@@ -262,22 +263,22 @@ public sealed class DataverseQueries
 
     public List<Entity> GetCustomApiRequestParameters(Guid customApiId)
     {
-        var query = new QueryExpression("customapirequestparameter")
+        var query = new QueryExpression(CustomAPIRequestParameter.EntityLogicalName)
         {
             ColumnSet = new ColumnSet(
-                "customapirequestparameterid",
-                "uniquename",
-                "name",
-                "displayname",
-                "description",
-                "type",
-                "isoptional",
-                "logicalentityname"),
+                CustomAPIRequestParameter.Fields.CustomAPIRequestParameterId,
+                CustomAPIRequestParameter.Fields.UniqueName,
+                CustomAPIRequestParameter.Fields.Name,
+                CustomAPIRequestParameter.Fields.DisplayName,
+                CustomAPIRequestParameter.Fields.Description,
+                CustomAPIRequestParameter.Fields.Type,
+                CustomAPIRequestParameter.Fields.IsOptional,
+                CustomAPIRequestParameter.Fields.LogicalEntityName),
             Criteria = new FilterExpression
             {
                 Conditions =
                 {
-                    new ConditionExpression("customapiid", ConditionOperator.Equal, customApiId)
+                    new ConditionExpression(CustomAPIRequestParameter.Fields.CustomAPIId, ConditionOperator.Equal, customApiId)
                 }
             }
         };
@@ -287,21 +288,21 @@ public sealed class DataverseQueries
 
     public List<Entity> GetCustomApiResponseProperties(Guid customApiId)
     {
-        var query = new QueryExpression("customapiresponseproperty")
+        var query = new QueryExpression(CustomAPIResponseProperty.EntityLogicalName)
         {
             ColumnSet = new ColumnSet(
-                "customapiresponsepropertyid",
-                "uniquename",
-                "name",
-                "displayname",
-                "description",
-                "type",
-                "logicalentityname"),
+                CustomAPIResponseProperty.Fields.CustomAPIResponsePropertyId,
+                CustomAPIResponseProperty.Fields.UniqueName,
+                CustomAPIResponseProperty.Fields.Name,
+                CustomAPIResponseProperty.Fields.DisplayName,
+                CustomAPIResponseProperty.Fields.Description,
+                CustomAPIResponseProperty.Fields.Type,
+                CustomAPIResponseProperty.Fields.LogicalEntityName),
             Criteria = new FilterExpression
             {
                 Conditions =
                 {
-                    new ConditionExpression("customapiid", ConditionOperator.Equal, customApiId)
+                    new ConditionExpression(CustomAPIResponseProperty.Fields.CustomAPIId, ConditionOperator.Equal, customApiId)
                 }
             }
         };
@@ -311,29 +312,29 @@ public sealed class DataverseQueries
 
     public List<CustomApiDetails> GetCustomApisForPluginType(string typeName)
     {
-        var query = new QueryExpression("customapi")
+        var query = new QueryExpression(CustomAPI.EntityLogicalName)
         {
             ColumnSet = new ColumnSet(
-                "customapiid",
-                "uniquename",
-                "name",
-                "displayname",
-                "description",
-                "bindingtype",
-                "boundentitylogicalname",
-                "isfunction",
-                "isprivate",
-                "allowedcustomprocessingsteptype",
-                "plugintypeid"),
+                CustomAPI.Fields.CustomAPIId,
+                CustomAPI.Fields.UniqueName,
+                CustomAPI.Fields.Name,
+                CustomAPI.Fields.DisplayName,
+                CustomAPI.Fields.Description,
+                CustomAPI.Fields.BindingType,
+                CustomAPI.Fields.BoundEntityLogicalName,
+                CustomAPI.Fields.IsFunction,
+                CustomAPI.Fields.IsPrivate,
+                CustomAPI.Fields.AllowedCustomProcessingStepType,
+                CustomAPI.Fields.PluginTypeId),
             LinkEntities =
             {
-                new LinkEntity("customapi", "plugintype", "plugintypeid", "plugintypeid", JoinOperator.Inner)
+                new LinkEntity(CustomAPI.EntityLogicalName, PluginType.EntityLogicalName, CustomAPI.Fields.PluginTypeId, PluginType.Fields.PluginTypeId, JoinOperator.Inner)
                 {
                     LinkCriteria = new FilterExpression
                     {
                         Conditions =
                         {
-                            new ConditionExpression("typename", ConditionOperator.Equal, typeName)
+                            new ConditionExpression(PluginType.Fields.TypeName, ConditionOperator.Equal, typeName)
                         }
                     }
                 }
@@ -363,21 +364,21 @@ public sealed class DataverseQueries
 
     public Entity? GetPluginTypeByTypeName(string typeName)
     {
-        var query = new QueryExpression("plugintype")
+        var query = new QueryExpression(PluginType.EntityLogicalName)
         {
             ColumnSet = new ColumnSet(
-                "plugintypeid",
-                "typename",
-                "name",
-                "friendlyname",
-                "description",
-                "workflowactivitygroupname",
-                "pluginassemblyid"),
+                PluginType.Fields.PluginTypeId,
+                PluginType.Fields.TypeName,
+                PluginType.Fields.Name,
+                PluginType.Fields.FriendlyName,
+                PluginType.Fields.Description,
+                PluginType.Fields.WorkflowActivityGroupName,
+                PluginType.Fields.PluginAssemblyId),
             Criteria = new FilterExpression
             {
                 Conditions =
                 {
-                    new ConditionExpression("typename", ConditionOperator.Equal, typeName)
+                    new ConditionExpression(PluginType.Fields.TypeName, ConditionOperator.Equal, typeName)
                 }
             },
             TopCount = 1
@@ -388,9 +389,9 @@ public sealed class DataverseQueries
 
     public OptionSetValue? GetAssemblyIsolationMode(Guid pluginTypeId)
     {
-        var pluginType = _service.Retrieve("plugintype", pluginTypeId, new ColumnSet("pluginassemblyid"));
-        var assemblyRef = pluginType.GetAttributeValue<EntityReference>("pluginassemblyid");
-        var assembly = _service.Retrieve("pluginassembly", assemblyRef.Id, new ColumnSet("isolationmode"));
-        return assembly.GetAttributeValue<OptionSetValue>("isolationmode");
+        var pluginType = _service.Retrieve(PluginType.EntityLogicalName, pluginTypeId, new ColumnSet(PluginType.Fields.PluginAssemblyId));
+        var assemblyRef = pluginType.GetAttributeValue<EntityReference>(PluginType.Fields.PluginAssemblyId);
+        var assembly = _service.Retrieve(PluginAssembly.EntityLogicalName, assemblyRef.Id, new ColumnSet(PluginAssembly.Fields.IsolationMode));
+        return assembly.GetAttributeValue<OptionSetValue>(PluginAssembly.Fields.IsolationMode);
     }
 }

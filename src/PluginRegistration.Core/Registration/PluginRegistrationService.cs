@@ -1,8 +1,10 @@
 using System.Reflection;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
 using PluginRegistration.Core.Connection;
 using PluginRegistration.Attributes;
 using PluginRegistration.Core.Config;
+using PluginRegistration.Core.Model.Entities;
 
 namespace PluginRegistration.Core.Registration;
 
@@ -149,7 +151,7 @@ public sealed class PluginRegistrationService
 
         var assemblyName = assembly.GetName();
         var existing = _queries.GetPluginAssemblyByName(assemblyName.Name!);
-        if (existing?.GetAttributeValue<EntityReference>("packageid") is not null)
+        if (existing?.GetAttributeValue<EntityReference>(PluginAssembly.Fields.PackageId) is not null)
         {
             throw new PluginRegistrationException(
                 $"Assembly '{assemblyName.Name}' is managed by a plugin package. " +
@@ -158,15 +160,14 @@ public sealed class PluginRegistrationService
 
         var content = Convert.ToBase64String(File.ReadAllBytes(assemblyFile.FullName));
 
-        var record = existing ?? new Entity("pluginassembly");
+        var record = existing ?? new Entity(PluginAssembly.EntityLogicalName);
         record["content"] = content;
         record["name"] = assemblyName.Name;
         record["culture"] = assemblyName.CultureName ?? "neutral";
         record["version"] = assemblyName.Version?.ToString() ?? "1.0.0.0";
         record["publickeytoken"] = BitConverter.ToString(assemblyName.GetPublicKeyToken() ?? []).Replace("-", string.Empty).ToLowerInvariant();
         record["sourcetype"] = new OptionSetValue(0);
-        record["isolationmode"] = new OptionSetValue(
-            firstAttribute?.IsolationMode == IsolationModeEnum.Sandbox ? 2 : 1);
+        record["isolationmode"] = new OptionSetValue((int)IsolationModeEnum.Sandbox);
 
         Guid assemblyId;
         if (existing is null)
@@ -199,7 +200,7 @@ public sealed class PluginRegistrationService
         if (existing is null)
         {
             _trace.WriteLine("Registering plugin package '{0}'", packageId);
-            Entity record = new Entity("pluginpackage")
+            Entity record = new Entity(PluginPackage.EntityLogicalName)
             {
                 ["name"] = packageId,
                 ["content"] = content
@@ -209,7 +210,7 @@ public sealed class PluginRegistrationService
         }
 
         _trace.WriteLine("Updating plugin package '{0}'", packageId);
-        Entity update = new Entity("pluginpackage", existing.Id)
+        Entity update = new Entity(PluginPackage.EntityLogicalName, existing.Id)
         {
             ["content"] = content
         };
@@ -258,10 +259,10 @@ public sealed class PluginRegistrationService
             foreach (var step in _queries.GetPluginSteps(existingType.Id))
             {
                 _trace.WriteLine("Deleting step '{0}'", step.GetAttributeValue<string>("name"));
-                _service.Delete("sdkmessageprocessingstep", step.Id);
+                _service.Delete(SdkMessageProcessingStep.EntityLogicalName, step.Id);
             }
 
-            _service.Delete("plugintype", existingType.Id);
+            _service.Delete(PluginType.EntityLogicalName, existingType.Id);
         }
     }
 
@@ -321,12 +322,12 @@ public sealed class PluginRegistrationService
     {
         if (existingTypes.TryGetValue(pluginType.FullName!, out var existing))
         {
-            var update = new Entity("plugintype", existing.Id)
+            var update = new Entity(PluginType.EntityLogicalName, existing.Id)
             {
                 ["name"] = pluginType.FullName,
                 ["typename"] = pluginType.FullName,
                 ["friendlyname"] = pluginType.FullName,
-                ["pluginassemblyid"] = new EntityReference("pluginassembly", assemblyId)
+                ["pluginassemblyid"] = new EntityReference(PluginAssembly.EntityLogicalName, assemblyId)
             };
 
             _trace.WriteLine("Updating plugin type '{0}'", pluginType.FullName);
@@ -334,12 +335,12 @@ public sealed class PluginRegistrationService
             return existing.Id;
         }
 
-        var create = new Entity("plugintype")
+        var create = new Entity(PluginType.EntityLogicalName)
         {
             ["name"] = pluginType.FullName,
             ["typename"] = pluginType.FullName,
             ["friendlyname"] = pluginType.FullName,
-            ["pluginassemblyid"] = new EntityReference("pluginassembly", assemblyId)
+            ["pluginassemblyid"] = new EntityReference(PluginAssembly.EntityLogicalName, assemblyId)
         };
 
         _trace.WriteLine("Registering plugin type '{0}'", pluginType.FullName);
@@ -380,7 +381,7 @@ public sealed class PluginRegistrationService
                     StringComparison.Ordinal));
         }
 
-        var record = step is null ? new Entity("sdkmessageprocessingstep") : new Entity("sdkmessageprocessingstep", step.Id);
+        var record = step is null ? new Entity(SdkMessageProcessingStep.EntityLogicalName) : new Entity(SdkMessageProcessingStep.EntityLogicalName, step.Id);
 
         Guid messageId;
         Guid? messageFilterId = null;
@@ -415,7 +416,7 @@ public sealed class PluginRegistrationService
         record["rank"] = pluginStep.ExecutionOrder;
         record["stage"] = new OptionSetValue((int)pluginStep.Stage!.Value);
         record["supporteddeployment"] = new OptionSetValue(GetSupportedDeployment(pluginStep));
-        record["plugintypeid"] = new EntityReference("plugintype", pluginTypeId);
+        record["plugintypeid"] = new EntityReference(PluginType.EntityLogicalName, pluginTypeId);
         record["sdkmessageid"] = new EntityReference("sdkmessage", messageId);
         record["filteringattributes"] = NormalizeCommaSeparated(pluginStep.FilteringAttributes ?? []);
 
@@ -454,14 +455,14 @@ public sealed class PluginRegistrationService
 
     private void RegisterSecureConfiguration(Guid stepId, string? secureConfiguration)
     {
-        var query = new Microsoft.Xrm.Sdk.Query.QueryExpression("sdkmessageprocessingstepsecureconfig")
+        var query = new QueryExpression(SdkMessageProcessingStepSecureConfig.EntityLogicalName)
         {
-            ColumnSet = new Microsoft.Xrm.Sdk.Query.ColumnSet("sdkmessageprocessingstepsecureconfigid", "secureconfig"),
-            Criteria = new Microsoft.Xrm.Sdk.Query.FilterExpression
+            ColumnSet = new ColumnSet(SdkMessageProcessingStepSecureConfig.Fields.SdkMessageProcessingStepSecureConfigId, "secureconfig"),
+            Criteria = new FilterExpression
             {
                 Conditions =
                 {
-                    new Microsoft.Xrm.Sdk.Query.ConditionExpression("sdkmessageprocessingstepid", Microsoft.Xrm.Sdk.Query.ConditionOperator.Equal, stepId)
+                    new ConditionExpression("sdkmessageprocessingstepid", ConditionOperator.Equal, stepId)
                 }
             },
             TopCount = 1
@@ -472,15 +473,15 @@ public sealed class PluginRegistrationService
         {
             if (existing is not null)
             {
-                _service.Delete("sdkmessageprocessingstepsecureconfig", existing.Id);
+                _service.Delete(SdkMessageProcessingStepSecureConfig.EntityLogicalName, existing.Id);
             }
 
             return;
         }
 
-        var record = existing ?? new Entity("sdkmessageprocessingstepsecureconfig");
+        var record = existing ?? new Entity(SdkMessageProcessingStepSecureConfig.EntityLogicalName);
         record["secureconfig"] = secureConfiguration;
-        record["sdkmessageprocessingstepid"] = new EntityReference("sdkmessageprocessingstep", stepId);
+        record["sdkmessageprocessingstepid"] = new EntityReference(SdkMessageProcessingStep.EntityLogicalName, stepId);
 
         if (existing is null)
         {
@@ -505,7 +506,7 @@ public sealed class PluginRegistrationService
         foreach (var image in existingImages)
         {
             _trace.WriteLine("Deleting obsolete image '{0}'", image.GetAttributeValue<string>("name"));
-            _service.Delete("sdkmessageprocessingstepimage", image.Id);
+            _service.Delete(SdkMessageProcessingStepImage.EntityLogicalName, image.Id);
         }
     }
 
@@ -525,13 +526,13 @@ public sealed class PluginRegistrationService
         var image = existingImages.FirstOrDefault(i =>
                 String.Equals(i.GetAttributeValue<string>("entityalias"), imageName, StringComparison.Ordinal)
                 && i.GetAttributeValue<OptionSetValue>("imagetype")?.Value == (int)imageType)
-            ?? new Entity("sdkmessageprocessingstepimage");
+            ?? new Entity(SdkMessageProcessingStepImage.EntityLogicalName);
 
         image["name"] = imageName;
         image["entityalias"] = imageName;
         image["imagetype"] = new OptionSetValue((int)imageType);
         image["attributes"] = NormalizeCommaSeparated(attributes);
-        image["sdkmessageprocessingstepid"] = new EntityReference("sdkmessageprocessingstep", stepId);
+        image["sdkmessageprocessingstepid"] = new EntityReference(SdkMessageProcessingStep.EntityLogicalName, stepId);
         image["messagepropertyname"] = GetImageMessagePropertyName(pluginStep.Message!);
 
         if (image.Id == Guid.Empty)
