@@ -17,7 +17,11 @@ public sealed class DataverseQueries
     {
         var query = new QueryExpression(PluginAssembly.EntityLogicalName)
         {
-            ColumnSet = new ColumnSet(PluginAssembly.Fields.Id, PluginAssembly.Fields.Name, PluginAssembly.Fields.PackageId),
+            ColumnSet = new ColumnSet(
+                PluginAssembly.Fields.Id,
+                PluginAssembly.Fields.Name,
+                PluginAssembly.Fields.PackageId,
+                PluginAssembly.Fields.IsolationMode),
             Criteria = new FilterExpression
             {
                 Conditions =

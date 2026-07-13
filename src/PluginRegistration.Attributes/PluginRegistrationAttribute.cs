@@ -55,7 +55,11 @@ namespace PluginRegistration.Attributes
         
         public PluginStepOperationEnum? Action { get; set; }
 
-        public IsolationModeEnum IsolationMode { get; }
+        /// <summary>
+        /// Isolation mode for the plugin assembly.
+        /// Default is Sandbox. Use None only if your environment explicitly allows full-trust registration.
+        /// </summary>
+        public IsolationModeEnum IsolationMode { get; set; } = IsolationModeEnum.Sandbox;
 
         public string? EntityLogicalName { get; }
         public string[] FilteringAttributes { get; }

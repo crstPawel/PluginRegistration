@@ -134,6 +134,11 @@ public sealed class PluginRegistrationService
         IEnumerable<Type> pluginTypes,
         bool isWorkflowActivity = false)
     {
+        // === ASSEMBLY REGISTRATION (direct .dll) ===
+        // 1. The .DLL file bytes are read and base64-encoded.
+        // 2. Uploaded directly into pluginassembly.content (sourcetype=0 Database).
+        // 3. Dataverse stores the assembly content in the pluginassembly record.
+        // 4. Then plugintype + steps/customapis are registered against it.
         var hasPluginSteps = pluginTypes.Any(type => ReflectionHelper.GetRegistrationAttributes(type).Any());
         var hasCustomApis = pluginTypes.Any(type => ReflectionHelper.GetCustomApiRegistrationAttributes(type).Any());
 
@@ -167,7 +172,27 @@ public sealed class PluginRegistrationService
         record["version"] = assemblyName.Version?.ToString() ?? "1.0.0.0";
         record["publickeytoken"] = BitConverter.ToString(assemblyName.GetPublicKeyToken() ?? []).Replace("-", string.Empty).ToLowerInvariant();
         record["sourcetype"] = new OptionSetValue(0);
-        record["isolationmode"] = new OptionSetValue((int)IsolationModeEnum.Sandbox);
+
+        // Determine isolation mode:
+        // - Prefer explicit value from [PluginRegistration(IsolationMode = ...)] on a plugin class
+        // - If updating existing assembly, preserve its current isolation mode (don't flip full-trust <-> sandbox unexpectedly)
+        // - Default to Sandbox (2) for new assemblies (full-trust "None"=1 is often disallowed)
+        int isolationModeValue;
+        if (firstAttribute != null)
+        {
+            isolationModeValue = (int)firstAttribute.IsolationMode;
+        }
+        else if (existing != null)
+        {
+            var existingIsolation = existing.GetAttributeValue<OptionSetValue>(PluginAssembly.Fields.IsolationMode);
+            isolationModeValue = existingIsolation?.Value ?? (int)IsolationModeEnum.Sandbox;
+        }
+        else
+        {
+            isolationModeValue = (int)IsolationModeEnum.Sandbox;
+        }
+
+        record["isolationmode"] = new OptionSetValue(isolationModeValue);
 
         Guid assemblyId;
         if (existing is null)
@@ -194,6 +219,16 @@ public sealed class PluginRegistrationService
 
     private Guid UpsertPluginPackage(string packageId, string packagePath)
     {
+        // === PACKAGE REGISTRATION (.nupkg) ===
+        // 1. The ENTIRE .NUPKG file (not individual DLLs) is read and base64-encoded.
+        // 2. Uploaded into pluginpackage.content .
+        // 3. Dataverse (server-side) processes the package:
+        //    - Extracts contained assemblies.
+        //    - Creates pluginassembly records linked via packageid (sourcetype typically 4).
+        //    - Creates corresponding plugintype records.
+        // 4. Client then locally extracts the nupkg (see NuGetPackageReader) only to discover
+        //    plugin types via reflection for step registration.
+        // 5. Steps are registered against the server-created assemblies (resolved by packageid).
         string content = Convert.ToBase64String(File.ReadAllBytes(packagePath));
         Entity? existing = _queries.GetPluginPackageByName(packageId);
 
