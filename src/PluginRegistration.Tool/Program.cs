@@ -37,10 +37,6 @@ namespace PluginRegistration.Tool
                 aliases: ["--exclude-steps"],
                 description: "Upload assemblies only, skip plugin step registration.");
 
-            var workflowOption = new Option<bool>(
-                aliases: ["--workflow"],
-                description: "Also register custom workflow activities.");
-
             var classRegexOption = new Option<string?>(
                 aliases: ["--class-regex"],
                 description: "Custom regex for detecting plugin classes during sync.");
@@ -49,9 +45,8 @@ namespace PluginRegistration.Tool
             deployCommand.AddOption(pathOption);
             deployCommand.AddOption(connectionOption);
             deployCommand.AddOption(excludeStepsOption);
-            deployCommand.AddOption(workflowOption);
             CommandValidators.AddDeployValidators(deployCommand, pathOption, connectionOption);
-            deployCommand.SetHandler(DeployAsync, pathOption, connectionOption, excludeStepsOption, workflowOption);
+            deployCommand.SetHandler(DeployAsync, pathOption, connectionOption, excludeStepsOption);
 
             var syncCommand = new Command("sync", "Download plugin step metadata from Dataverse and update source code attributes.");
             syncCommand.AddOption(pathOption);
@@ -193,15 +188,14 @@ namespace PluginRegistration.Tool
             static Task DeployAsync(
                 DirectoryInfo? path,
                 string? connection,
-                bool excludeSteps,
-                bool workflow)
+                bool excludeSteps)
             {
                 var trace = new ConsoleTrace();
                 var service = Connect(connection);
                 var deployService = new PluginDeployService(service, trace);
 
                 trace.WriteLine("Deploying plugins.");
-                deployService.Deploy(ResolvePath(path).FullName, excludeSteps, workflow);
+                deployService.Deploy(ResolvePath(path).FullName, excludeSteps);
                 trace.WriteLine("Deployment completed successfully.");
                 return Task.CompletedTask;
             }

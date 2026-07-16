@@ -14,11 +14,12 @@ namespace Sample.Plugins
     [CustomApiRegistration("sample_EnrichAccount", FriendlyName = "Enrich Account", Description = "Enriches account data from an external source")]
     [CustomApiRequestParameter("AccountId", CustomApiParameterTypeEnum.String, ApiUniqueName = "sample_EnrichAccount", IsRequired = true, Description = "Account identifier")]
     [CustomApiResponseProperty("EnrichedName", CustomApiParameterTypeEnum.String, ApiUniqueName = "sample_EnrichAccount", Description = "Enriched account name")] 
-    public class MultiCustomApiPlugin : IPlugin
+    public class MultiCustomApiPlugin : PluginBase
     {
-        public void Execute(IServiceProvider serviceProvider)
+        public MultiCustomApiPlugin(Type pluginClassName) : base(pluginClassName)
         {
             // Route to the correct API handler based on context.MessageName.
         }
+        
     }
 }

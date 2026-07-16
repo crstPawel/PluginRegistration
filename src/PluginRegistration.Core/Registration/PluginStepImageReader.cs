@@ -46,7 +46,7 @@ public static class PluginStepImageReader
         {
             Name = (string)arguments[0].Value!,
             ImageType = (ImageTypeEnum)Enum.ToObject(typeof(ImageTypeEnum), (int)arguments[1].Value!),
-            Attributes = (string)arguments[2].Value!
+            Attributes = FilteringAttributesParser.ParseArray(arguments[2])
         };
     }
 
@@ -54,6 +54,6 @@ public static class PluginStepImageReader
     {
         public string Name { get; init; } = string.Empty;
         public ImageTypeEnum ImageType { get; init; }
-        public string Attributes { get; init; } = string.Empty;
+        public string[] Attributes { get; init; } = [];
     }
 }

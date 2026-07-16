@@ -167,7 +167,7 @@ The attribute is inserted before the class declaration via `AttributeCodeGenerat
 
 `ReadStepImages(stepId)` fetches `sdkmessageprocessingstepimage` and generates separate `[PluginStepImage]` attributes:
 
-- `Name`, `ImageType`, `Attributes` (constructor: name, image type, attribute list).
+- `Name`, `ImageType`, `Attributes` (constructor: name, image type, `string[]` attribute list — same array style as filtering attributes).
 
 Generator: `PluginStepImageCodeGenerator`.
 

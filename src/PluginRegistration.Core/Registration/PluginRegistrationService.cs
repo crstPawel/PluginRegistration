@@ -1,8 +1,10 @@
 using System.Reflection;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
 using PluginRegistration.Core.Connection;
 using PluginRegistration.Attributes;
 using PluginRegistration.Core.Config;
+using PluginRegistration.Core.Model.Entities;
 
 namespace PluginRegistration.Core.Registration;
 
@@ -60,34 +62,70 @@ public sealed class PluginRegistrationService
         RegisterPluginSteps(pluginTypes, pluginAssemblyId.Value);
     }
 
-    public void RegisterWorkflowActivities(string assemblyPath)
+    public void RegisterPluginPackage(string packagePath, bool excludePluginSteps = false)
     {
-        var file = new FileInfo(assemblyPath);
-        if (ReflectionHelper.ShouldIgnoreAssembly(file.Name))
+        FileInfo file = new FileInfo(packagePath);
+        if (!file.Exists)
         {
-            return;
+            throw new PluginRegistrationException($"Plugin package not found: {packagePath}");
         }
 
-        using var context = ReflectionHelper.CreateLoadContext(file.DirectoryName!);
-        var assembly = ReflectionHelper.LoadAssembly(context, file.FullName);
-        if (assembly is null)
-        {
-            return;
-        }
+        string packageId = NuGetPackageReader.GetPackageId(file.FullName);
+        _trace.WriteLine("Deploying plugin package '{0}' ({1})", packageId, file.Name);
 
-        var activityTypes = ReflectionHelper.GetWorkflowActivityTypes(assembly).ToList();
-        if (activityTypes.Count == 0)
-        {
-            return;
-        }
+        Guid packageEntityId = UpsertPluginPackage(packageId, file.FullName);
+        string tempDirectory = NuGetPackageReader.ExtractToTempDirectory(file.FullName);
 
-        var pluginAssemblyId = RegisterAssembly(file, assembly, activityTypes, isWorkflowActivity: true);
-        if (pluginAssemblyId is null)
+        try
         {
-            return;
-        }
+            foreach (string assemblyPath in NuGetPackageReader.GetPluginAssemblyPaths(tempDirectory))
+            {
+                using MetadataLoadContext context = ReflectionHelper.CreateLoadContext(Path.GetDirectoryName(assemblyPath)!);
+                Assembly? assembly = ReflectionHelper.LoadAssembly(context, assemblyPath);
+                if (assembly is null)
+                {
+                    continue;
+                }
 
-        RegisterWorkflowActivityTypes(activityTypes, pluginAssemblyId.Value);
+                List<Type> pluginTypes = ReflectionHelper.GetPluginTypes(assembly).ToList();
+                if (pluginTypes.Count == 0)
+                {
+                    continue;
+                }
+
+                string assemblyName = assembly.GetName().Name!;
+                _trace.WriteLine("Checking package assembly '{0}' - found {1} plugin(s)", assemblyName, pluginTypes.Count);
+
+                Guid? pluginAssemblyId = ResolvePackageAssemblyId(packageEntityId, assemblyName);
+                if (pluginAssemblyId is null)
+                {
+                    _trace.WriteLine(
+                        "Warning: Assembly '{0}' was not found in package '{1}' after upload. Skipping step registration.",
+                        assemblyName,
+                        packageId);
+                    continue;
+                }
+
+                if (excludePluginSteps)
+                {
+                    continue;
+                }
+
+                RemoveOrphanedPluginTypes(pluginTypes, pluginAssemblyId.Value, false);
+                RegisterPluginSteps(pluginTypes, pluginAssemblyId.Value);
+            }
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(tempDirectory, true);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup of the temp extraction directory.
+            }
+        }
     }
 
     private Guid? RegisterAssembly(
@@ -96,6 +134,11 @@ public sealed class PluginRegistrationService
         IEnumerable<Type> pluginTypes,
         bool isWorkflowActivity = false)
     {
+        // === ASSEMBLY REGISTRATION (direct .dll) ===
+        // 1. The .DLL file bytes are read and base64-encoded.
+        // 2. Uploaded directly into pluginassembly.content (sourcetype=0 Database).
+        // 3. Dataverse stores the assembly content in the pluginassembly record.
+        // 4. Then plugintype + steps/customapis are registered against it.
         var hasPluginSteps = pluginTypes.Any(type => ReflectionHelper.GetRegistrationAttributes(type).Any());
         var hasCustomApis = pluginTypes.Any(type => ReflectionHelper.GetCustomApiRegistrationAttributes(type).Any());
 
@@ -113,17 +156,43 @@ public sealed class PluginRegistrationService
 
         var assemblyName = assembly.GetName();
         var existing = _queries.GetPluginAssemblyByName(assemblyName.Name!);
+        if (existing?.GetAttributeValue<EntityReference>(PluginAssembly.Fields.PackageId) is not null)
+        {
+            throw new PluginRegistrationException(
+                $"Assembly '{assemblyName.Name}' is managed by a plugin package. " +
+                $"Deploy the .nupkg file instead of updating the assembly directly.");
+        }
+
         var content = Convert.ToBase64String(File.ReadAllBytes(assemblyFile.FullName));
 
-        var record = existing ?? new Entity("pluginassembly");
+        var record = existing ?? new Entity(PluginAssembly.EntityLogicalName);
         record["content"] = content;
         record["name"] = assemblyName.Name;
         record["culture"] = assemblyName.CultureName ?? "neutral";
         record["version"] = assemblyName.Version?.ToString() ?? "1.0.0.0";
         record["publickeytoken"] = BitConverter.ToString(assemblyName.GetPublicKeyToken() ?? []).Replace("-", string.Empty).ToLowerInvariant();
         record["sourcetype"] = new OptionSetValue(0);
-        record["isolationmode"] = new OptionSetValue(
-            firstAttribute?.IsolationMode == IsolationModeEnum.Sandbox ? 2 : 1);
+
+        // Determine isolation mode:
+        // - Prefer explicit value from [PluginRegistration(IsolationMode = ...)] on a plugin class
+        // - If updating existing assembly, preserve its current isolation mode (don't flip full-trust <-> sandbox unexpectedly)
+        // - Default to Sandbox (2) for new assemblies (full-trust "None"=1 is often disallowed)
+        int isolationModeValue;
+        if (firstAttribute != null)
+        {
+            isolationModeValue = (int)firstAttribute.IsolationMode;
+        }
+        else if (existing != null)
+        {
+            var existingIsolation = existing.GetAttributeValue<OptionSetValue>(PluginAssembly.Fields.IsolationMode);
+            isolationModeValue = existingIsolation?.Value ?? (int)IsolationModeEnum.Sandbox;
+        }
+        else
+        {
+            isolationModeValue = (int)IsolationModeEnum.Sandbox;
+        }
+
+        record["isolationmode"] = new OptionSetValue(isolationModeValue);
 
         Guid assemblyId;
         if (existing is null)
@@ -148,6 +217,66 @@ public sealed class PluginRegistrationService
         return assemblyId;
     }
 
+    private Guid UpsertPluginPackage(string packageId, string packagePath)
+    {
+        // === PACKAGE REGISTRATION (.nupkg) ===
+        // 1. The ENTIRE .NUPKG file (not individual DLLs) is read and base64-encoded.
+        // 2. Uploaded into pluginpackage.content .
+        // 3. Dataverse (server-side) processes the package:
+        //    - Extracts contained assemblies.
+        //    - Creates pluginassembly records linked via packageid (sourcetype typically 4).
+        //    - Creates corresponding plugintype records.
+        // 4. Client then locally extracts the nupkg (see NuGetPackageReader) only to discover
+        //    plugin types via reflection for step registration.
+        // 5. Steps are registered against the server-created assemblies (resolved by packageid).
+        string content = Convert.ToBase64String(File.ReadAllBytes(packagePath));
+        Entity? existing = _queries.GetPluginPackageByName(packageId);
+
+        if (existing is null)
+        {
+            _trace.WriteLine("Registering plugin package '{0}'", packageId);
+            Entity record = new Entity(PluginPackage.EntityLogicalName)
+            {
+                ["name"] = packageId,
+                ["content"] = content
+            };
+
+            return DataverseOrganizationRequests.CreateWithSolution(_service, record, SolutionUniqueName);
+        }
+
+        _trace.WriteLine("Updating plugin package '{0}'", packageId);
+        Entity update = new Entity(PluginPackage.EntityLogicalName, existing.Id)
+        {
+            ["content"] = content
+        };
+        DataverseOrganizationRequests.UpdateWithSolution(_service, update, SolutionUniqueName);
+        return existing.Id;
+    }
+
+    private Guid? ResolvePackageAssemblyId(Guid packageId, string assemblyName)
+    {
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            Entity? assembly = _queries.GetPluginAssembliesForPackage(packageId)
+                .FirstOrDefault(record => String.Equals(
+                    record.GetAttributeValue<string>("name"),
+                    assemblyName,
+                    StringComparison.Ordinal));
+
+            if (assembly is not null)
+            {
+                return assembly.Id;
+            }
+
+            if (attempt < 4)
+            {
+                Thread.Sleep(TimeSpan.FromSeconds(2));
+            }
+        }
+
+        return null;
+    }
+
     private void RemoveOrphanedPluginTypes(IEnumerable<Type> pluginTypes, Guid assemblyId, bool isWorkflowActivity)
     {
         var typeNames = pluginTypes.Select(t => t.FullName).ToHashSet(StringComparer.Ordinal);
@@ -165,10 +294,10 @@ public sealed class PluginRegistrationService
             foreach (var step in _queries.GetPluginSteps(existingType.Id))
             {
                 _trace.WriteLine("Deleting step '{0}'", step.GetAttributeValue<string>("name"));
-                _service.Delete("sdkmessageprocessingstep", step.Id);
+                _service.Delete(SdkMessageProcessingStep.EntityLogicalName, step.Id);
             }
 
-            _service.Delete("plugintype", existingType.Id);
+            _service.Delete(PluginType.EntityLogicalName, existingType.Id);
         }
     }
 
@@ -228,12 +357,12 @@ public sealed class PluginRegistrationService
     {
         if (existingTypes.TryGetValue(pluginType.FullName!, out var existing))
         {
-            var update = new Entity("plugintype", existing.Id)
+            var update = new Entity(PluginType.EntityLogicalName, existing.Id)
             {
                 ["name"] = pluginType.FullName,
                 ["typename"] = pluginType.FullName,
                 ["friendlyname"] = pluginType.FullName,
-                ["pluginassemblyid"] = new EntityReference("pluginassembly", assemblyId)
+                ["pluginassemblyid"] = new EntityReference(PluginAssembly.EntityLogicalName, assemblyId)
             };
 
             _trace.WriteLine("Updating plugin type '{0}'", pluginType.FullName);
@@ -241,24 +370,16 @@ public sealed class PluginRegistrationService
             return existing.Id;
         }
 
-        var create = new Entity("plugintype")
+        var create = new Entity(PluginType.EntityLogicalName)
         {
             ["name"] = pluginType.FullName,
             ["typename"] = pluginType.FullName,
             ["friendlyname"] = pluginType.FullName,
-            ["pluginassemblyid"] = new EntityReference("pluginassembly", assemblyId)
+            ["pluginassemblyid"] = new EntityReference(PluginAssembly.EntityLogicalName, assemblyId)
         };
 
         _trace.WriteLine("Registering plugin type '{0}'", pluginType.FullName);
         return _service.Create(create);
-    }
-
-    private void RegisterWorkflowActivityTypes(IEnumerable<Type> activityTypes, Guid assemblyId)
-    {
-        _ = activityTypes;
-        _ = assemblyId;
-        _trace.WriteLine(
-            "Workflow activity registration is not supported with the current attribute model.");
     }
 
     private void RegisterCustomApi(Type pluginType, Guid pluginTypeId, CustomApiRegistration attribute)
@@ -295,7 +416,7 @@ public sealed class PluginRegistrationService
                     StringComparison.Ordinal));
         }
 
-        var record = step is null ? new Entity("sdkmessageprocessingstep") : new Entity("sdkmessageprocessingstep", step.Id);
+        var record = step is null ? new Entity(SdkMessageProcessingStep.EntityLogicalName) : new Entity(SdkMessageProcessingStep.EntityLogicalName, step.Id);
 
         Guid messageId;
         Guid? messageFilterId = null;
@@ -330,7 +451,7 @@ public sealed class PluginRegistrationService
         record["rank"] = pluginStep.ExecutionOrder;
         record["stage"] = new OptionSetValue((int)pluginStep.Stage!.Value);
         record["supporteddeployment"] = new OptionSetValue(GetSupportedDeployment(pluginStep));
-        record["plugintypeid"] = new EntityReference("plugintype", pluginTypeId);
+        record["plugintypeid"] = new EntityReference(PluginType.EntityLogicalName, pluginTypeId);
         record["sdkmessageid"] = new EntityReference("sdkmessage", messageId);
         record["filteringattributes"] = NormalizeCommaSeparated(pluginStep.FilteringAttributes ?? []);
 
@@ -369,14 +490,14 @@ public sealed class PluginRegistrationService
 
     private void RegisterSecureConfiguration(Guid stepId, string? secureConfiguration)
     {
-        var query = new Microsoft.Xrm.Sdk.Query.QueryExpression("sdkmessageprocessingstepsecureconfig")
+        var query = new QueryExpression(SdkMessageProcessingStepSecureConfig.EntityLogicalName)
         {
-            ColumnSet = new Microsoft.Xrm.Sdk.Query.ColumnSet("sdkmessageprocessingstepsecureconfigid", "secureconfig"),
-            Criteria = new Microsoft.Xrm.Sdk.Query.FilterExpression
+            ColumnSet = new ColumnSet(SdkMessageProcessingStepSecureConfig.Fields.SdkMessageProcessingStepSecureConfigId, "secureconfig"),
+            Criteria = new FilterExpression
             {
                 Conditions =
                 {
-                    new Microsoft.Xrm.Sdk.Query.ConditionExpression("sdkmessageprocessingstepid", Microsoft.Xrm.Sdk.Query.ConditionOperator.Equal, stepId)
+                    new ConditionExpression("sdkmessageprocessingstepid", ConditionOperator.Equal, stepId)
                 }
             },
             TopCount = 1
@@ -387,15 +508,15 @@ public sealed class PluginRegistrationService
         {
             if (existing is not null)
             {
-                _service.Delete("sdkmessageprocessingstepsecureconfig", existing.Id);
+                _service.Delete(SdkMessageProcessingStepSecureConfig.EntityLogicalName, existing.Id);
             }
 
             return;
         }
 
-        var record = existing ?? new Entity("sdkmessageprocessingstepsecureconfig");
+        var record = existing ?? new Entity(SdkMessageProcessingStepSecureConfig.EntityLogicalName);
         record["secureconfig"] = secureConfiguration;
-        record["sdkmessageprocessingstepid"] = new EntityReference("sdkmessageprocessingstep", stepId);
+        record["sdkmessageprocessingstepid"] = new EntityReference(SdkMessageProcessingStep.EntityLogicalName, stepId);
 
         if (existing is null)
         {
@@ -420,7 +541,7 @@ public sealed class PluginRegistrationService
         foreach (var image in existingImages)
         {
             _trace.WriteLine("Deleting obsolete image '{0}'", image.GetAttributeValue<string>("name"));
-            _service.Delete("sdkmessageprocessingstepimage", image.Id);
+            _service.Delete(SdkMessageProcessingStepImage.EntityLogicalName, image.Id);
         }
     }
 
@@ -430,7 +551,7 @@ public sealed class PluginRegistrationService
         List<Entity> existingImages,
         string? imageName,
         ImageTypeEnum imageType,
-        string? attributes)
+        string[] attributes)
     {
         if (string.IsNullOrWhiteSpace(imageName))
         {
@@ -438,15 +559,15 @@ public sealed class PluginRegistrationService
         }
 
         var image = existingImages.FirstOrDefault(i =>
-            string.Equals(i.GetAttributeValue<string>("entityalias"), imageName, StringComparison.Ordinal)
-            && i.GetAttributeValue<OptionSetValue>("imagetype")?.Value == (int)imageType)
-            ?? new Entity("sdkmessageprocessingstepimage");
+                String.Equals(i.GetAttributeValue<string>("entityalias"), imageName, StringComparison.Ordinal)
+                && i.GetAttributeValue<OptionSetValue>("imagetype")?.Value == (int)imageType)
+            ?? new Entity(SdkMessageProcessingStepImage.EntityLogicalName);
 
         image["name"] = imageName;
         image["entityalias"] = imageName;
         image["imagetype"] = new OptionSetValue((int)imageType);
-        image["attributes"] = NormalizeCommaSeparated(attributes);
-        image["sdkmessageprocessingstepid"] = new EntityReference("sdkmessageprocessingstep", stepId);
+        image["attributes"] = NormalizeCommaSeparated(attributes ?? []);
+        image["sdkmessageprocessingstepid"] = new EntityReference(SdkMessageProcessingStep.EntityLogicalName, stepId);
         image["messagepropertyname"] = GetImageMessagePropertyName(pluginStep.Message!);
 
         if (image.Id == Guid.Empty)
@@ -474,9 +595,6 @@ public sealed class PluginRegistrationService
 
         return string.Join(",", input).Replace(" ", string.Empty);
     }
-
-    private static string? NormalizeCommaSeparated(string? input)
-        => string.IsNullOrWhiteSpace(input) ? input : input.Replace(" ", string.Empty);
 
     private static string GetImageMessagePropertyName(string message) => message switch
     {

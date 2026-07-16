@@ -48,6 +48,9 @@ public static class AttributeParser
                 case nameof(PluginRegistrationAttribute.Action):
                     attribute.Action = (PluginStepOperationEnum)namedArgument.TypedValue.Value!;
                     break;
+                case nameof(PluginRegistrationAttribute.IsolationMode):
+                    attribute.IsolationMode = (IsolationModeEnum)namedArgument.TypedValue.Value!;
+                    break;
             }
         }
 

@@ -12,11 +12,11 @@ namespace Sample.Plugins
         ExecutionModeEnum.Synchronous,
         [Account.Fields.Name],
         1)]
-    public sealed class AccountCreatePlugin : IPlugin
+    public sealed class AccountCreatePlugin : PluginBase
     {
-        public void Execute(IServiceProvider serviceProvider)
+        public AccountCreatePlugin(Type pluginClassName) : base(pluginClassName)
         {
-            // Plugin logic
+            
         }
     }
 
@@ -26,11 +26,11 @@ namespace Sample.Plugins
         Description = "Sample Custom API that processes an account identifier")]
     [CustomApiRequestParameter("AccountId", CustomApiParameterTypeEnum.String, IsRequired = true, Description = "Account identifier")]
     [CustomApiResponseProperty("Success", CustomApiParameterTypeEnum.Boolean, Description = "Whether processing succeeded")]
-    public sealed class ProcessAccountCustomApiPlugin : IPlugin
+    public sealed class ProcessAccountCustomApiPlugin : PluginBase
     {
-        public void Execute(IServiceProvider serviceProvider)
+        public ProcessAccountCustomApiPlugin(Type pluginClassName) : base(pluginClassName)
         {
-            // Custom API handler
+            
         }
     }
 }

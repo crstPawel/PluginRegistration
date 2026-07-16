@@ -6,7 +6,23 @@ env:
   ARTIFACTS_DIR: ./artifacts
 
 on:
-  workflow_dispatch:   # Tylko ręczne uruchomienie
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Nadpisanie wersji pakietu (puste = wersja z Directory.Build.props)'
+        required: false
+        type: string
+        default: ''
+      project:
+        description: 'Projekt do spakowania i wysłania na NuGet'
+        required: true
+        type: choice
+        options:
+          - all
+          - PluginRegistration.Attributes
+          - PluginRegistration.Core
+          - PluginRegistration.Tool
+        default: all
 
 jobs:
   build-and-publish:
@@ -27,6 +43,32 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Resolve pack target
+        id: target
+        shell: bash
+        run: |
+          PROJECT="${{ inputs.project }}"
+          case "$PROJECT" in
+            all)
+              echo "pack_target=PluginRegistrationTool.slnx" >> $GITHUB_OUTPUT
+              ;;
+            PluginRegistration.Attributes)
+              echo "pack_target=src/PluginRegistration.Attributes/PluginRegistration.Attributes.csproj" >> $GITHUB_OUTPUT
+              ;;
+            PluginRegistration.Core)
+              echo "pack_target=src/PluginRegistration.Core/PluginRegistration.Core.csproj" >> $GITHUB_OUTPUT
+              ;;
+            PluginRegistration.Tool)
+              echo "pack_target=src/PluginRegistration.Tool/PluginRegistration.Tool.csproj" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "::error::Unknown project: $PROJECT"
+              exit 1
+              ;;
+          esac
+          echo "project=$PROJECT" >> $GITHUB_OUTPUT
+          echo "Pack target project: $PROJECT"
+
       - name: Restore
         run: dotnet restore PluginRegistrationTool.slnx
 
@@ -40,17 +82,27 @@ jobs:
         id: version
         shell: bash
         run: |
-          VER=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -1 || echo "")
+          INPUT_VERSION="${{ inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            VER="$INPUT_VERSION"
+            echo "Using version override from workflow input: $VER"
+          else
+            VER=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -1 || echo "")
+            echo "Using version from Directory.Build.props: $VER"
+          fi
           echo "version=$VER" >> $GITHUB_OUTPUT
-          echo "Using version: $VER"
 
       - name: Pack NuGet packages
         run: |
           PACK_VERSION="${{ steps.version.outputs.version }}"
+          PACK_TARGET="${{ steps.target.outputs.pack_target }}"
           if [ -n "$PACK_VERSION" ]; then
-            dotnet pack --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:Version="$PACK_VERSION" /p:ContinuousIntegrationBuild=true
+            dotnet pack "$PACK_TARGET" --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} \
+              /p:Version="$PACK_VERSION" \
+              /p:ContinuousIntegrationBuild=true
           else
-            dotnet pack --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:ContinuousIntegrationBuild=true
+            dotnet pack "$PACK_TARGET" --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} \
+              /p:ContinuousIntegrationBuild=true
           fi
 
       - name: List generated packages
@@ -83,5 +135,6 @@ jobs:
         run: |
           echo "✅ Pakiety NuGet zostały pomyślnie opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Projekt:** ${{ steps.target.outputs.project }}" >> $GITHUB_STEP_SUMMARY
           echo "**Wersja:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Data publikacji:** $(date)" >> $GITHUB_STEP_SUMMARY

@@ -30,7 +30,7 @@ public static class AttributeCodeGenerator
             attribute.EntityLogicalName,
             attribute.Stage,
             attribute.ExecutionMode,
-            FormatFilteringAttributesForCode(attribute.FilteringAttributes),
+            FilteringAttributesParser.FormatForCode(attribute.FilteringAttributes),
             attribute.ExecutionOrder,
             extras,
             indentation);
@@ -46,21 +46,6 @@ public static class AttributeCodeGenerator
         return Enum.TryParse<MessageTypeEnum>(message, true, out var messageType)
             ? $"MessageTypeEnum.{messageType}"
             : null;
-    }
-
-    private static string FormatFilteringAttributesForCode(string[] filteringAttributes)
-    {
-        if (filteringAttributes.Length == 0)
-        {
-            return "[]";
-        }
-
-        if (filteringAttributes.Length == 1)
-        {
-            return $"[\"{filteringAttributes[0]}\"]";
-        }
-
-        return $"new[] {{ {string.Join(", ", filteringAttributes.Select(part => $"\"{part}\""))} }}";
     }
 
     private static string BuildNamedParameters(
