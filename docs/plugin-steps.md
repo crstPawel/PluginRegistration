@@ -37,7 +37,7 @@ Named properties: `Id`, `Name`, `DeleteAsyncOperation`, `UnSecureConfiguration`,
     ["name", "telephone1"],
     1,
     Id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890")]
-[PluginStepImage("PostImage", ImageTypeEnum.PostImage, "name,telephone1")]
+[PluginStepImage("PostImage", ImageTypeEnum.PostImage, ["name", "telephone1"])]
 public class AccountUpdatePlugin : IPlugin { ... }
 ```
 
@@ -61,6 +61,6 @@ Custom name when multiple steps share the same stage:
 
 ## Step images
 
-`[PluginStepImage(name, imageType, attributes)]` — matched to steps by image type and stage (PreImage → pre-stages, PostImage → PostOperation).
+`[PluginStepImage(name, imageType, attributes)]` — `attributes` is a `string[]` (same style as `filteringAttributes` on `[PluginRegistration]`). Matched to steps by image type and stage (PreImage → pre-stages, PostImage → PostOperation).
 
 Deploy internals: [deploy.md](deploy.md). Sync behavior: [sync.md](sync.md).

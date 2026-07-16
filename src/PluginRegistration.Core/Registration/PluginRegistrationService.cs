@@ -551,7 +551,7 @@ public sealed class PluginRegistrationService
         List<Entity> existingImages,
         string? imageName,
         ImageTypeEnum imageType,
-        string? attributes)
+        string[] attributes)
     {
         if (string.IsNullOrWhiteSpace(imageName))
         {
@@ -566,7 +566,7 @@ public sealed class PluginRegistrationService
         image["name"] = imageName;
         image["entityalias"] = imageName;
         image["imagetype"] = new OptionSetValue((int)imageType);
-        image["attributes"] = NormalizeCommaSeparated(attributes);
+        image["attributes"] = NormalizeCommaSeparated(attributes ?? []);
         image["sdkmessageprocessingstepid"] = new EntityReference(SdkMessageProcessingStep.EntityLogicalName, stepId);
         image["messagepropertyname"] = GetImageMessagePropertyName(pluginStep.Message!);
 
@@ -595,9 +595,6 @@ public sealed class PluginRegistrationService
 
         return string.Join(",", input).Replace(" ", string.Empty);
     }
-
-    private static string? NormalizeCommaSeparated(string? input)
-        => string.IsNullOrWhiteSpace(input) ? input : input.Replace(" ", string.Empty);
 
     private static string GetImageMessagePropertyName(string message) => message switch
     {

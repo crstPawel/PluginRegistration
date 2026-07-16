@@ -11,7 +11,7 @@ namespace Sample.Plugins
     /// </summary>
     [PluginRegistration(MessageTypeEnum.Create, Account.EntityLogicalName, StageEnum.PreOperation, ExecutionModeEnum.Synchronous, [Account.Fields.Name], 1)]
     [PluginRegistration(MessageTypeEnum.Update, Account.EntityLogicalName, StageEnum.PostOperation, ExecutionModeEnum.Synchronous, [Account.Fields.Name], 1)]
-    [PluginStepImage("PostImage", ImageTypeEnum.PostImage, "name,telephone1")]
+    [PluginStepImage("PostImage", ImageTypeEnum.PostImage, [Account.Fields.Name, "telephone1"])]
     public class AccountLifecyclePlugin : PluginBase
     {
         public AccountLifecyclePlugin(Type pluginClassName) : base(pluginClassName)

@@ -12,7 +12,7 @@ namespace PluginRegistration.Attributes
         public PluginStepImageAttribute(
             string name,
             ImageTypeEnum imageType,
-            string attributes)
+            string[] attributes)
         {
             Name = name;
             ImageType = imageType;
@@ -21,6 +21,6 @@ namespace PluginRegistration.Attributes
 
         public string Name { get; }
         public ImageTypeEnum ImageType { get; }
-        public string Attributes { get; }
+        public string[] Attributes { get; }
     }
 }

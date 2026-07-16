@@ -224,7 +224,8 @@ public sealed class MetadataSyncService
             {
                 Name = image.GetAttributeValue<string>("entityalias") ?? image.GetAttributeValue<string>("name") ?? string.Empty,
                 ImageType = (ImageTypeEnum)(image.GetAttributeValue<OptionSetValue>("imagetype")?.Value ?? 0),
-                Attributes = image.GetAttributeValue<string>("attributes")
+                Attributes = FilteringAttributesParser.SplitCommaSeparated(
+                    image.GetAttributeValue<string>("attributes"))
             })
             .ToList();
     }
