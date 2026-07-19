@@ -7,9 +7,14 @@ public sealed class PluginRegistrationConfig
     public List<PluginDeployEntry> Plugins { get; set; } = [];
 
     /// <summary>
-    /// Per-environment overrides keyed by profile name (dev, test, prod).
+    /// Step overrides keyed by step name or step Id (GUID).
     /// </summary>
-    public Dictionary<string, ProfileSettings> Profiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, StepOverride> StepOverrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Custom API definitions for deployment.
+    /// </summary>
+    public List<CustomApiDefinition> CustomApis { get; set; } = [];
 
     [JsonIgnore]
     public string FilePath { get; set; } = string.Empty;
@@ -30,43 +35,24 @@ public sealed class PluginRegistrationConfig
         return config;
     }
 
-    public IReadOnlyList<PluginDeployEntry> GetPluginEntries(string? profile)
-    {
-        if (string.Equals(profile, "default", StringComparison.OrdinalIgnoreCase))
-        {
-            profile = null;
-        }
-
-        if (profile is null)
-        {
-            return Plugins
-                .Where(p => string.IsNullOrWhiteSpace(p.Profile)
-                    || p.Profile.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                        .Any(x => x.Equals("default", StringComparison.OrdinalIgnoreCase)))
-                .ToList();
-        }
-
-        return Plugins
-            .Where(p => !string.IsNullOrWhiteSpace(p.Profile)
-                && p.Profile.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .Any(x => x.Equals(profile, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
-    }
-
-    public ProfileSettings? GetProfileSettings(string? profile)
-    {
-        if (string.IsNullOrWhiteSpace(profile))
-        {
-            return null;
-        }
-
-        Profiles.TryGetValue(profile, out var settings);
-        return settings;
-    }
+    public IReadOnlyList<PluginDeployEntry> GetPluginEntries()
+        => Plugins;
 
     public IEnumerable<string> ResolveAssemblyPaths(PluginDeployEntry entry)
+        => ResolveArtifactPaths(entry.AssemblyPath, "*.dll", "Assembly");
+
+    public IEnumerable<string> ResolvePackagePaths(PluginDeployEntry entry)
     {
-        var pattern = entry.AssemblyPath;
+        if (String.IsNullOrWhiteSpace(entry.PackagePath))
+        {
+            return [];
+        }
+
+        return ResolveArtifactPaths(entry.PackagePath, "*.nupkg", "Package");
+    }
+
+    private IEnumerable<string> ResolveArtifactPaths(string? pattern, string defaultSearchPattern, string artifactLabel)
+    {
         if (string.IsNullOrWhiteSpace(pattern))
         {
             pattern = "bin/Release";
@@ -75,44 +61,28 @@ public sealed class PluginRegistrationConfig
         var extension = Path.GetExtension(pattern);
         if (string.IsNullOrEmpty(extension))
         {
-            pattern = Path.Combine(pattern, "*.dll");
+            pattern = Path.Combine(pattern, defaultSearchPattern);
         }
 
-        var directory = FilePath;
         var searchPattern = Path.GetFileName(pattern);
-        var searchDirectory = Path.Combine(directory, Path.GetDirectoryName(pattern) ?? string.Empty);
+        string searchDirectory = Path.Combine(FilePath, Path.GetDirectoryName(pattern) ?? String.Empty);
 
         if (!Directory.Exists(searchDirectory))
         {
-            throw new PluginRegistrationException($"Assembly path not found: {searchDirectory}");
+            throw new PluginRegistrationException($"{artifactLabel} path not found: {searchDirectory}");
         }
 
-        // Search recursively to support modern SDK output layouts (e.g. bin/Release/net462/*.dll, bin/Release/net8.0/* etc.)
-        // RegisterPlugins will filter out non-plugin assemblies and dependencies.
         return Directory.EnumerateFiles(searchDirectory, searchPattern, SearchOption.AllDirectories)
-            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase);
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
     }
 }
 
 public sealed class PluginDeployEntry
 {
-    public string? Profile { get; set; }
     public string? Solution { get; set; }
     public string AssemblyPath { get; set; } = "bin/Release";
+    public string? PackagePath { get; set; }
     public bool ExcludePluginSteps { get; set; }
-}
-
-public sealed class ProfileSettings
-{
-    /// <summary>
-    /// Step overrides keyed by step name or step Id (GUID).
-    /// </summary>
-    public Dictionary<string, StepOverride> StepOverrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Custom API definitions for this environment.
-    /// </summary>
-    public List<CustomApiDefinition> CustomApis { get; set; } = [];
 }
 
 public sealed class StepOverride

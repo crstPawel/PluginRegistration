@@ -18,7 +18,13 @@
     <None Include="..\..\README.NuGet.md" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
-  <ItemGroup>
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>PluginRegistration.Core.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
     <ProjectReference Include="..\PluginRegistration.Attributes\PluginRegistration.Attributes.csproj" />
   </ItemGroup>
 

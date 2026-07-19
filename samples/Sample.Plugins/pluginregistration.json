@@ -1,165 +1,70 @@
 {
   "plugins": [
     {
-      "profile": "dev,test,prod",
       "solution": "SampleSolution",
       "assemblyPath": "bin/Release",
       "excludePluginSteps": false
     }
   ],
-  "profiles": {
-    "dev": {
-      "stepOverrides": {
-        "Sample.Plugins.AccountCreatePlugin.PreOperation": {
-          "unSecureConfiguration": ""
-        },
-        "Sample.Plugins.AccountLifecyclePlugin.PreOperation": {
-          "unSecureConfiguration": ""
-        },
-        "Sample.Plugins.AccountLifecyclePlugin.PostOperation": {
-          "unSecureConfiguration": ""
-        }
-      },
-      "customApis": [
-        {
-          "uniqueName": "sample_ProcessAccount",
-          "displayName": "Process Account",
-          "pluginTypeName": "Sample.Plugins.ProcessAccountCustomApiPlugin",
-          "createIfMissing": false,
-          "isFunction": false,
-          "isPrivate": false,
-          "bindingType": 0,
-          "allowedCustomProcessingStepType": 0,
-          "requestParameters": [],
-          "responseProperties": []
-        },
-        {
-          "uniqueName": "sample_ValidateAccount",
-          "displayName": "Validate Account",
-          "pluginTypeName": "Sample.Plugins.MultiCustomApiPlugin",
-          "createIfMissing": false,
-          "isFunction": false,
-          "isPrivate": false,
-          "bindingType": 0,
-          "allowedCustomProcessingStepType": 0,
-          "requestParameters": [],
-          "responseProperties": []
-        },
-        {
-          "uniqueName": "sample_EnrichAccount",
-          "displayName": "Enrich Account",
-          "pluginTypeName": "Sample.Plugins.MultiCustomApiPlugin",
-          "createIfMissing": false,
-          "isFunction": false,
-          "isPrivate": false,
-          "bindingType": 0,
-          "allowedCustomProcessingStepType": 0,
-          "requestParameters": [],
-          "responseProperties": []
-        }
-      ]
+  "stepOverrides": {
+    "Sample.Plugins.AccountCreatePlugin.PostOperation": {
+      "unSecureConfiguration": ""
     },
-    "test": {
-      "stepOverrides": {
-        "Sample.Plugins.AccountCreatePlugin.PreOperation": {
-          "unSecureConfiguration": ""
-        },
-        "Sample.Plugins.AccountLifecyclePlugin.PreOperation": {
-          "unSecureConfiguration": ""
-        },
-        "Sample.Plugins.AccountLifecyclePlugin.PostOperation": {
-          "unSecureConfiguration": ""
-        }
-      },
-      "customApis": [
-        {
-          "uniqueName": "sample_ProcessAccount",
-          "displayName": "Process Account",
-          "pluginTypeName": "Sample.Plugins.ProcessAccountCustomApiPlugin",
-          "createIfMissing": false,
-          "isFunction": false,
-          "isPrivate": false,
-          "bindingType": 0,
-          "allowedCustomProcessingStepType": 0,
-          "requestParameters": [],
-          "responseProperties": []
-        },
-        {
-          "uniqueName": "sample_ValidateAccount",
-          "displayName": "Validate Account",
-          "pluginTypeName": "Sample.Plugins.MultiCustomApiPlugin",
-          "createIfMissing": false,
-          "isFunction": false,
-          "isPrivate": false,
-          "bindingType": 0,
-          "allowedCustomProcessingStepType": 0,
-          "requestParameters": [],
-          "responseProperties": []
-        },
-        {
-          "uniqueName": "sample_EnrichAccount",
-          "displayName": "Enrich Account",
-          "pluginTypeName": "Sample.Plugins.MultiCustomApiPlugin",
-          "createIfMissing": false,
-          "isFunction": false,
-          "isPrivate": false,
-          "bindingType": 0,
-          "allowedCustomProcessingStepType": 0,
-          "requestParameters": [],
-          "responseProperties": []
-        }
-      ]
+    "Sample.Plugins.AccountLifecyclePlugin.PreOperation": {
+      "unSecureConfiguration": ""
     },
-    "prod": {
-      "stepOverrides": {
-        "Sample.Plugins.AccountCreatePlugin.PreOperation": {
-          "unSecureConfiguration": ""
-        },
-        "Sample.Plugins.AccountLifecyclePlugin.PreOperation": {
-          "unSecureConfiguration": ""
-        },
-        "Sample.Plugins.AccountLifecyclePlugin.PostOperation": {
-          "unSecureConfiguration": ""
-        }
-      },
-      "customApis": [
-        {
-          "uniqueName": "sample_ProcessAccount",
-          "displayName": "Process Account",
-          "pluginTypeName": "Sample.Plugins.ProcessAccountCustomApiPlugin",
-          "createIfMissing": false,
-          "isFunction": false,
-          "isPrivate": false,
-          "bindingType": 0,
-          "allowedCustomProcessingStepType": 0,
-          "requestParameters": [],
-          "responseProperties": []
-        },
-        {
-          "uniqueName": "sample_ValidateAccount",
-          "displayName": "Validate Account",
-          "pluginTypeName": "Sample.Plugins.MultiCustomApiPlugin",
-          "createIfMissing": false,
-          "isFunction": false,
-          "isPrivate": false,
-          "bindingType": 0,
-          "allowedCustomProcessingStepType": 0,
-          "requestParameters": [],
-          "responseProperties": []
-        },
-        {
-          "uniqueName": "sample_EnrichAccount",
-          "displayName": "Enrich Account",
-          "pluginTypeName": "Sample.Plugins.MultiCustomApiPlugin",
-          "createIfMissing": false,
-          "isFunction": false,
-          "isPrivate": false,
-          "bindingType": 0,
-          "allowedCustomProcessingStepType": 0,
-          "requestParameters": [],
-          "responseProperties": []
-        }
-      ]
+    "Sample.Plugins.AccountLifecyclePlugin.PostOperation": {
+      "unSecureConfiguration": ""
     }
-  }
+  },
+  "customApis": [
+    {
+      "uniqueName": "sample_ProcessAccount",
+      "displayName": "Process Account",
+      "pluginTypeName": "Sample.Plugins.ProcessAccountCustomApiPlugin",
+      "createIfMissing": true,
+      "isFunction": false,
+      "isPrivate": false,
+      "bindingType": 0,
+      "allowedCustomProcessingStepType": 0,
+      "requestParameters": [],
+      "responseProperties": []
+    },
+    {
+      "uniqueName": "sample_ValidateAccount",
+      "displayName": "Validate Account",
+      "pluginTypeName": "Sample.Plugins.MultiCustomApiPlugin",
+      "createIfMissing": true,
+      "isFunction": false,
+      "isPrivate": false,
+      "bindingType": 0,
+      "allowedCustomProcessingStepType": 0,
+      "requestParameters": [],
+      "responseProperties": []
+    },
+    {
+      "uniqueName": "sample_EnrichAccount",
+      "displayName": "Enrich Account",
+      "pluginTypeName": "Sample.Plugins.MultiCustomApiPlugin",
+      "createIfMissing": true,
+      "isFunction": false,
+      "isPrivate": false,
+      "bindingType": 0,
+      "allowedCustomProcessingStepType": 0,
+      "requestParameters": [],
+      "responseProperties": []
+    },
+    {
+      "uniqueName": "sample_AccountLifecycle",
+      "displayName": "Account Lifecycle",
+      "pluginTypeName": "Sample.Plugins.AccountLifecycleCustomApi",
+      "createIfMissing": true,
+      "isFunction": false,
+      "isPrivate": false,
+      "bindingType": 0,
+      "allowedCustomProcessingStepType": 0,
+      "requestParameters": [],
+      "responseProperties": []
+    }
+  ]
 }

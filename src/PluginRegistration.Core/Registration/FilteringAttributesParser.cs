@@ -5,19 +5,48 @@ namespace PluginRegistration.Core.Registration;
 
 internal static class FilteringAttributesParser
 {
-    public static string Parse(CustomAttributeTypedArgument argument)
+    public static string[] ParseArray(CustomAttributeTypedArgument argument)
     {
         if (argument.Value is string text)
         {
-            return text;
+            return string.IsNullOrWhiteSpace(text) ? [] : [text];
         }
 
         if (argument.ArgumentType.IsArray && argument.ArgumentType.GetElementType() == typeof(string))
         {
-            return Join(ExtractStringArray(argument.Value));
+            return ExtractStringArray(argument.Value);
         }
 
-        return string.Empty;
+        return [];
+    }
+
+    public static string Parse(CustomAttributeTypedArgument argument)
+        => Join(ParseArray(argument));
+
+    public static string[] SplitCommaSeparated(string? attributes)
+    {
+        if (string.IsNullOrWhiteSpace(attributes))
+        {
+            return [];
+        }
+
+        return attributes
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    public static string FormatForCode(string[] attributes)
+    {
+        if (attributes.Length == 0)
+        {
+            return "[]";
+        }
+
+        if (attributes.Length == 1)
+        {
+            return $"[\"{attributes[0]}\"]";
+        }
+
+        return $"new[] {{ {string.Join(", ", attributes.Select(part => $"\"{part}\""))} }}";
     }
 
     private static string Join(IEnumerable<string> filteringAttributes)

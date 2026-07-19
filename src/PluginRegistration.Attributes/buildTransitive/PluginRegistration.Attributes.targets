@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup>
+    <_PluginRegistrationAttributesTargetsImported>true</_PluginRegistrationAttributesTargetsImported>
+  </PropertyGroup>
+
+  <!-- NuGet layout: analyzers/dotnet/cs (relative to buildTransitive/) -->
+  <PropertyGroup Condition="'$(_PluginRegistrationAttributesAnalyzerDll)' == '' and Exists('$(MSBuildThisFileDirectory)..\analyzers\dotnet\cs\PluginRegistration.Attributes.Analyzers.dll')">
+    <_PluginRegistrationAttributesAnalyzerDll>$(MSBuildThisFileDirectory)..\analyzers\dotnet\cs\PluginRegistration.Attributes.Analyzers.dll</_PluginRegistrationAttributesAnalyzerDll>
+  </PropertyGroup>
+
+  <!-- Local repo layout: sibling Analyzers project -->
+  <PropertyGroup Condition="'$(_PluginRegistrationAttributesAnalyzerDll)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\PluginRegistration.Attributes.Analyzers\bin\$(Configuration)\netstandard2.0\PluginRegistration.Attributes.Analyzers.dll')">
+    <_PluginRegistrationAttributesAnalyzerDll>$(MSBuildThisFileDirectory)..\..\PluginRegistration.Attributes.Analyzers\bin\$(Configuration)\netstandard2.0\PluginRegistration.Attributes.Analyzers.dll</_PluginRegistrationAttributesAnalyzerDll>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(_PluginRegistrationAttributesAnalyzerProject)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\PluginRegistration.Attributes.Analyzers\PluginRegistration.Attributes.Analyzers.csproj')">
+    <_PluginRegistrationAttributesAnalyzerProject>$(MSBuildThisFileDirectory)..\..\PluginRegistration.Attributes.Analyzers\PluginRegistration.Attributes.Analyzers.csproj</_PluginRegistrationAttributesAnalyzerProject>
+  </PropertyGroup>
+
+  <Target Name="BuildPluginRegistrationAttributesAnalyzer"
+          BeforeTargets="CoreCompile"
+          Condition="'$(_PluginRegistrationAttributesAnalyzerDll)' == '' and '$(_PluginRegistrationAttributesAnalyzerProject)' != ''">
+    <MSBuild Projects="$(_PluginRegistrationAttributesAnalyzerProject)"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)" />
+    <PropertyGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\PluginRegistration.Attributes.Analyzers\bin\$(Configuration)\netstandard2.0\PluginRegistration.Attributes.Analyzers.dll')">
+      <_PluginRegistrationAttributesAnalyzerDll>$(MSBuildThisFileDirectory)..\..\PluginRegistration.Attributes.Analyzers\bin\$(Configuration)\netstandard2.0\PluginRegistration.Attributes.Analyzers.dll</_PluginRegistrationAttributesAnalyzerDll>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="AddPluginRegistrationAttributesAnalyzers"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="BuildPluginRegistrationAttributesAnalyzer"
+          Condition="'$(_PluginRegistrationAttributesAnalyzerDll)' != '' and Exists('$(_PluginRegistrationAttributesAnalyzerDll)')">
+    <ItemGroup>
+      <Analyzer Include="$(_PluginRegistrationAttributesAnalyzerDll)" />
+    </ItemGroup>
+  </Target>
+
+</Project>
