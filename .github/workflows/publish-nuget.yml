@@ -66,13 +66,30 @@ jobs:
           fi
 
       - name: Pack NuGet packages
+        # Pack only projects under src/ — always skip samples/ (e.g. Sample.Plugins),
+        # which is packable for local demo but must never be published to nuget.org.
         run: |
           PACK_VERSION="${{ steps.version.outputs.version }}"
+          PACK_ARGS=(--no-build -c Release -o "${{ env.ARTIFACTS_DIR }}" /p:ContinuousIntegrationBuild=true)
           if [ -n "$PACK_VERSION" ]; then
-            dotnet pack --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:Version="$PACK_VERSION" /p:ContinuousIntegrationBuild=true
-          else
-            dotnet pack --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:ContinuousIntegrationBuild=true
+            PACK_ARGS+=(/p:Version="$PACK_VERSION")
           fi
+
+          shopt -s nullglob
+          projects=(src/*/*.csproj)
+          if [ ${#projects[@]} -eq 0 ]; then
+            echo "::error::No projects found under src/"
+            exit 1
+          fi
+
+          for proj in "${projects[@]}"; do
+            echo "Packing $proj"
+            dotnet pack "$proj" "${PACK_ARGS[@]}"
+          done
+
+          # Safety net: never ship sample packages even if a path changes later
+          rm -f "${{ env.ARTIFACTS_DIR }}"/Sample.Plugins*.nupkg \
+                "${{ env.ARTIFACTS_DIR }}"/Sample.Plugins*.snupkg
 
       - name: List generated packages
         run: ls -la ${{ env.ARTIFACTS_DIR }}/
