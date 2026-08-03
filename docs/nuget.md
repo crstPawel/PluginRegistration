@@ -59,16 +59,20 @@ Workflow: `.github/workflows/publish-nuget.yml`
 
 #### One-time setup
 
-**1. nuget.org — Trusted Publishing policy** (same account that owns the packages):
+**Important:** GitHub login (`crstPawel`) ≠ nuget.org package owner (`psobczak`).  
+`NuGet/login` `user` must be the **policy creator** on nuget.org (usually the package owner), not the GitHub username.  
+Error `No matching trust policy owned by user '…'` almost always means wrong nuget.org username or missing policy.
+
+**1. nuget.org — create Trusted Publishing policy** while logged in as **`psobczak`** (owner of the packages):
 
 | Field | Value |
 |-------|--------|
-| Repository Owner | `crstPawel` |
+| Repository Owner | `crstPawel` (GitHub user/org of the repo) |
 | Repository | `PluginRegistration` |
 | Workflow File | `publish-nuget.yml` (filename only — no `.github/workflows/`) |
 | Environment | leave empty (workflow does not use `environment:`) |
 
-Policy owner must match the owner of:
+Policy must be created under the same account that owns:
 
 - `PluginRegistration.Attributes`
 - `PluginRegistration.Core`
@@ -80,10 +84,10 @@ A new policy may stay *pending / temporary* for up to 7 days until the first suc
 
 | Name | Required | Value |
 |------|----------|--------|
-| `NUGET_USER` (secret or repo variable) | No | nuget.org **profile username** (not email). Workflow default: `crstPawel` |
+| `NUGET_USER` (secret or repo variable) | No | nuget.org **profile username** of the policy creator (not email). Workflow default: **`psobczak`** |
 | `NUGET_API_KEY` (secret) | Optional fallback | Classic API key with Push to the packages above |
 
-Empty `NUGET_USER` secret used to break `NuGet/login` with *Input required and not supplied: user* — username is public, so the workflow falls back to `crstPawel`.
+Do **not** set `NUGET_USER` to `crstPawel` unless that is also the nuget.org login that created the trust policy.
 
 **3. Workflow permissions** (already set in YAML): `id-token: write`, `contents: read`.
 

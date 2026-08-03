@@ -104,16 +104,19 @@ jobs:
       # OIDC JWT must be exchanged for a short-lived NuGet API key (NuGet/login).
       # Raw GitHub OIDC tokens are NOT valid --api-key values (→ 403).
       # continue-on-error: allow classic secrets.NUGET_API_KEY if OIDC policy is not ready.
-      # user is required by NuGet/login; empty secrets omit the input → "Input required".
-      # Username is public — default to package-owner profile; override via secret/var if needed.
+      #
+      # user = nuget.org username of the Trusted Publishing *policy creator*
+      # (usually package owner). Must match account that created the policy —
+      # NOT the GitHub org/user unless that is also the nuget.org login.
+      # Packages PluginRegistration.* are owned by nuget.org user "psobczak".
       - name: NuGet login (OIDC → temp API key)
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
         uses: NuGet/login@v1
         id: nuget-login
         continue-on-error: true
         with:
-          # nuget.org profile name (NOT email). Prefer secret/var; else package owner on nuget.org.
-          user: ${{ secrets.NUGET_USER || vars.NUGET_USER || 'crstPawel' }}
+          # nuget.org profile (NOT email, NOT necessarily GitHub login).
+          user: ${{ secrets.NUGET_USER || vars.NUGET_USER || 'psobczak' }}
 
       - name: Publish to NuGet.org
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
@@ -124,8 +127,9 @@ jobs:
         run: |
           if [ -z "$NUGET_API_KEY" ]; then
             echo "::error::Brak klucza NuGet (OIDC login outcome=$LOGIN_OUTCOME, brak secret NUGET_API_KEY)."
-            echo "1) nuget.org → Trusted Publishing: owner crstPawel, repo PluginRegistration, workflow publish-nuget.yml"
-            echo "2) Username w loginie: secret/var NUGET_USER lub domyślnie 'crstPawel' (profil nuget.org, nie email)"
+            echo "1) Zaloguj się na nuget.org jako właściciel pakietów (psobczak) → Trusted Publishing"
+            echo "   GitHub owner: crstPawel, repo: PluginRegistration, workflow: publish-nuget.yml, env: (empty)"
+            echo "2) NuGet/login user = twórca polityki (psobczak), NIE GitHub login (crstPawel)"
             echo "3) Albo dodaj klasyczny secret NUGET_API_KEY z uprawnieniem Push"
             exit 1
           fi
@@ -159,6 +163,6 @@ jobs:
           else
             echo "❌ Publish na nuget.org nie powiódł się (publish: $OUTCOME, OIDC login: $LOGIN)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Sprawdź: Trusted Publishing (workflow \`publish-nuget.yml\`, owner/repo), username nuget.org (\`crstPawel\` / \`NUGET_USER\`), opcjonalnie \`NUGET_API_KEY\`." >> $GITHUB_STEP_SUMMARY
+            echo "Sprawdź: Trusted Publishing pod kontem **psobczak** (policy creator), GitHub \`crstPawel/PluginRegistration\` + \`publish-nuget.yml\`, opcjonalnie \`NUGET_API_KEY\`." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
