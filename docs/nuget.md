@@ -52,13 +52,52 @@ Produces:
 
 Workflow: `.github/workflows/publish-nuget.yml`
 
-- Builds, tests, packs all 3 packages
-- Uses **Trusted Publishing** (OIDC)
-- Publishes on GitHub Release or manual run with `publish=true`
+- Builds, tests, packs the 3 packages under `src/` (never `Sample.Plugins`)
+- Exchanges GitHub OIDC for a **short-lived NuGet API key** via [`NuGet/login@v1`](https://github.com/NuGet/login) (raw OIDC JWT is **not** a valid `--api-key`)
+- Publishes on GitHub Release or manual `workflow_dispatch` with `publish=true`
+- Optional fallback: classic long-lived `NUGET_API_KEY` if OIDC login fails
 
-One-time setup on nuget.org — Trusted Publisher per package:
-- Owner: `crstPawel`
-- Repository: `PluginRegistration`
+#### One-time setup
+
+**1. nuget.org — Trusted Publishing policy** (same account that owns the packages):
+
+| Field | Value |
+|-------|--------|
+| Repository Owner | `crstPawel` |
+| Repository | `PluginRegistration` |
+| Workflow File | `publish-nuget.yml` (filename only — no `.github/workflows/`) |
+| Environment | leave empty (workflow does not use `environment:`) |
+
+Policy owner must match the owner of:
+
+- `PluginRegistration.Attributes`
+- `PluginRegistration.Core`
+- `PluginRegistration.Tool`
+
+A new policy may stay *pending / temporary* for up to 7 days until the first successful publish activates it permanently.
+
+**2. GitHub repo secrets**
+
+| Secret | Required | Value |
+|--------|----------|--------|
+| `NUGET_USER` | Yes (for Trusted Publishing) | nuget.org **profile username** (not email) |
+| `NUGET_API_KEY` | Optional fallback | Classic API key with Push to the packages above |
+
+**3. Workflow permissions** (already set in YAML): `id-token: write`, `contents: read`.
+
+#### How the auth flow works
+
+```text
+GitHub OIDC JWT  →  NuGet/login@v1  →  nuget.org /api/v2/token  →  temp NUGET_API_KEY (~1h)  →  dotnet nuget push
+```
+
+Do **not** pass the raw GitHub OIDC JWT to `dotnet nuget push --api-key` — nuget.org will return **403**.
+
+#### Alternative (no Trusted Publishing)
+
+1. nuget.org → API Keys → key with **Push** for `PluginRegistration.*` (or `*`).
+2. GitHub → Secrets → `NUGET_API_KEY`.
+3. You can omit `NUGET_USER`; the workflow falls back to the classic key (less secure: long-lived secret).
 
 ### Manual push
 

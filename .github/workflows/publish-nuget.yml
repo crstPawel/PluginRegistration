@@ -101,43 +101,57 @@ jobs:
           path: ${{ env.ARTIFACTS_DIR }}/
           retention-days: 30
 
-      - name: Get OIDC token for NuGet Trusted Publishing
-        # Oficjalny sposób z dokumentacji NuGet (curl + OIDC JWT jako api-key)
-        # https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing
+      # OIDC JWT must be exchanged for a short-lived NuGet API key (NuGet/login).
+      # Raw GitHub OIDC tokens are NOT valid --api-key values (→ 403).
+      # continue-on-error: allow classic secrets.NUGET_API_KEY fallback when
+      # Trusted Publishing is not configured or NUGET_USER is missing.
+      - name: NuGet login (OIDC → temp API key)
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
-        id: nuget-oidc
-        run: |
-          TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api.nuget.org" | jq -r '.value' || echo "")
-          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+        uses: NuGet/login@v1
+        id: nuget-login
+        continue-on-error: true
+        with:
+          # nuget.org profile username (NOT email) — set repo secret NUGET_USER
+          user: ${{ secrets.NUGET_USER }}
 
       - name: Publish to NuGet.org
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
+        id: publish
         env:
-          # OIDC token z Trusted Publishing (musi pasować do polityki 'psobczak')
-          NUGET_API_KEY: ${{ steps.nuget-oidc.outputs.token || secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY || secrets.NUGET_API_KEY }}
         run: |
           if [ -z "$NUGET_API_KEY" ]; then
-            echo "::warning::No OIDC token and no NUGET_API_KEY secret. Skipping publish."
-            exit 0
+            echo "::error::Brak klucza NuGet (OIDC login i secret NUGET_API_KEY)."
+            echo "Skonfiguruj Trusted Publishing + secret NUGET_USER, albo klasyczny NUGET_API_KEY."
+            exit 1
           fi
 
-          echo "Pushing packages using OIDC token..."
+          if [ -n "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" ]; then
+            echo "Pushing packages with Trusted Publishing (temp API key)..."
+          else
+            echo "Pushing packages with classic NUGET_API_KEY secret..."
+          fi
+
+          # Push only .nupkg; symbols (.snupkg) are associated during pack and uploaded with the package
           dotnet nuget push "${{ env.ARTIFACTS_DIR }}/*.nupkg" \
             --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
       - name: Publish summary
-        if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
-        env:
-          NUGET_API_KEY: ${{ steps.nuget-oidc.outputs.token || secrets.NUGET_API_KEY }}
+        if: always() && ((github.event_name == 'release') || (github.event.inputs.publish == 'true'))
         run: |
-          if [ -z "$NUGET_API_KEY" ]; then
-            echo "⚠️ Publish skipped (no OIDC token / API key)" >> $GITHUB_STEP_SUMMARY
-            exit 0
+          OUTCOME="${{ steps.publish.outcome }}"
+          if [ "$OUTCOME" = "success" ]; then
+            echo "✅ Pakiety NuGet zostały opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Opublikowane pakiety:" >> $GITHUB_STEP_SUMMARY
+            ls ${{ env.ARTIFACTS_DIR }}/*.nupkg 2>/dev/null | xargs -I {} basename {} | sed 's/^/- \`/' | sed 's/$/\`/' >> $GITHUB_STEP_SUMMARY || echo "- (brak plików)" >> $GITHUB_STEP_SUMMARY
+          elif [ "$OUTCOME" = "skipped" ]; then
+            echo "⚠️ Publish pominięty" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Publish na nuget.org nie powiódł się (outcome: $OUTCOME)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Sprawdź: Trusted Publishing (workflow \`publish-nuget.yml\`, owner/repo), secret \`NUGET_USER\`, opcjonalnie \`NUGET_API_KEY\`." >> $GITHUB_STEP_SUMMARY
+            exit 1
           fi
-          echo "✅ Pakiety NuGet zostały opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Opublikowane pakiety:" >> $GITHUB_STEP_SUMMARY
-          ls ${{ env.ARTIFACTS_DIR }}/*.nupkg 2>/dev/null | xargs -I {} basename {} | sed 's/^/- \`/' | sed 's/$/\`/' >> $GITHUB_STEP_SUMMARY || echo "- (brak plików)" >> $GITHUB_STEP_SUMMARY
