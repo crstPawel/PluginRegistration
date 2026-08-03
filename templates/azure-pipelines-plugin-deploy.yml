@@ -19,16 +19,17 @@ trigger:
   paths:
     include:
       - src/plugins/**
-      - pluginregistration.json
 
 variables:
   dotnetVersion: '10.0.x'
   # Update this when you publish a new version of PluginRegistration.Tool to your feed
   toolVersion: '1.0.3'
+  pluginSolution: 'MySolution'
+  packagePath: 'bin/Release'
 
 stages:
   - stage: Build
-    displayName: Build plugin assembly
+    displayName: Pack plugin NuGet packages
     jobs:
       - job: BuildPlugins
         pool:
@@ -40,14 +41,15 @@ stages:
               version: $(dotnetVersion)
 
           - task: DotNetCoreCLI@2
-            displayName: Restore and build plugins
+            displayName: Restore, build, and pack plugins
             inputs:
-              command: build
+              command: custom
+              custom: pack
               projects: '**/*Plugins*.csproj'
               arguments: '-c Release'
 
           - task: PublishPipelineArtifact@1
-            displayName: Publish plugin binaries
+            displayName: Publish plugin packages
             inputs:
               targetPath: '$(Build.SourcesDirectory)'
               artifact: plugin-package
@@ -89,7 +91,7 @@ stages:
                     inlineScript: |
                       cd $(Pipeline.Workspace)/plugin-package
                       pluginreg whoami
-                      pluginreg deploy --path . --profile dev
+                      pluginreg deploy --path . --package-path $(packagePath) --solution $(pluginSolution)
                   env:
                     DATAVERSE_URL: $(DATAVERSE_URL)
                     # For classic secret or certificate auth, nothing else is needed.
@@ -130,8 +132,7 @@ stages:
                     scriptLocation: inlineScript
                     inlineScript: |
                       cd $(Pipeline.Workspace)/plugin-package
-                      pluginreg deploy --path . --profile prod
+                      pluginreg deploy --path . --package-path $(packagePath) --solution $(pluginSolution)
                   env:
                     DATAVERSE_URL: $(DATAVERSE_URL)
-                    PROD_API_URL: $(PROD_API_URL)
                     # For WIF: export DATAVERSE_ACCESS_TOKEN=$(az account get-access-token --resource "$DATAVERSE_URL" --query accessToken -o tsv)

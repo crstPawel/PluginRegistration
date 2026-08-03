@@ -7,7 +7,22 @@ On `deploy`, the tool:
 1. Creates or updates `customapi`
 2. Registers `customapirequestparameter` and `customapiresponseproperty`
 3. Binds to `plugintypeid`
-4. Adds components to the solution from `pluginregistration.json`
+4. Adds components to the solution when `--solution` is set
+
+### Unique names and publisher prefix
+
+Dataverse requires Custom API (and parameter) `uniquename` values to start with a **valid publisher customization prefix**.
+
+When `--solution` is set on deploy, the tool resolves that solution's **publisher customization prefix** and applies it to the Custom API `uniquename` automatically:
+
+| Name in attribute / JSON | Solution publisher prefix | Registered `uniquename` |
+|--------------------------|---------------------------|-------------------------|
+| `ProcessAccount` | `contoso` | `contoso_ProcessAccount` |
+| `contoso_ProcessAccount` | `contoso` | `contoso_ProcessAccount` (no double prefix) |
+
+The prefix always comes from the configured solution's publisher — not from hard-coded defaults. If the name already starts with `{prefix}_`, it is left unchanged.
+
+Request/response parameter unique names (e.g. `AccountId`) are **not** rewritten — they stay as written so plugin `InputParameters` / `OutputParameters` keys match the code.
 
 ## Full definition in code
 
@@ -15,8 +30,9 @@ On `deploy`, the tool:
 using Microsoft.Xrm.Sdk;
 using PluginRegistration.Attributes;
 
+// Custom API unique name may omit the publisher prefix — deploy adds it from --solution.
 [CustomApiRegistration(
-    "sample_ProcessAccount",
+    "ProcessAccount",
     FriendlyName = "Process Account",
     Description = "Processes the account identifier",
     CustomApiBindingType = CustomApiBindingTypeEnum.Global,
@@ -90,11 +106,9 @@ public class ProcessOrderApiPlugin : IPlugin
 }
 ```
 
-## JSON-only definition (fallback)
+Custom APIs are registered only from code attributes during package deploy.
 
-In `profiles.customApis` with `createIfMissing: true` — see [configuration.md](configuration.md).
-
-Deploy order: assembly → plugin types → Custom APIs from code → JSON-only definitions.
+Deploy order: package upload → plugin types from package → Custom APIs / steps from attributes.
 
 ## Sync
 

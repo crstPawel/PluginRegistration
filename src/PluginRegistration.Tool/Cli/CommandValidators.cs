@@ -1,8 +1,6 @@
-using System;
 using System.Collections.Generic;
 using System.CommandLine;
 using System.IO;
-using System.Linq;
 
 namespace PluginRegistration.Tool.Cli;
 
@@ -17,7 +15,7 @@ internal static class CommandValidators
         {
             var errors = new List<string>();
 
-            if (!PathValidation.TryValidateConfigFile(result.GetValueForOption(pathOption), out var pathError))
+            if (!PathValidation.TryValidateDirectory(result.GetValueForOption(pathOption), out var pathError))
             {
                 errors.Add(pathError);
             }
@@ -67,26 +65,6 @@ internal static class CommandValidators
             if (!ConnectionValidation.TryValidate(result.GetValueForOption(connectionOption), out var connectionError))
             {
                 CliErrorReporter.ReportValidationErrors(result, [connectionError]);
-            }
-        });
-    }
-
-    public static void AddInitValidators(
-        Command command,
-        Option<DirectoryInfo> pathOption)
-    {
-        command.AddValidator(result =>
-        {
-            var errors = new List<string>();
-
-            if (!PathValidation.TryValidateDirectory(result.GetValueForOption(pathOption), out var pathError))
-            {
-                errors.Add(pathError);
-            }
-
-            if (errors.Count > 0)
-            {
-                CliErrorReporter.ReportValidationErrors(result, errors);
             }
         });
     }

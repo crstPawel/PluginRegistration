@@ -4,9 +4,11 @@ public sealed class EarlyBoundGenerationRequest
 {
     public required string WorkingDirectory { get; init; }
 
+    /// <summary>
+    /// Path to DLaB Early Bound Generator V2 XML config (earlyboundgenerator.xml).
+    /// Relative paths are resolved against <see cref="WorkingDirectory"/>.
+    /// </summary>
     public string? ConfigFilePath { get; init; }
-
-    public bool UseJsonConfig { get; init; }
 
     public string? OutputDirectory { get; set; }
 

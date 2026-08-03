@@ -12,13 +12,30 @@ internal static class FilteringAttributesParser
             return string.IsNullOrWhiteSpace(text) ? [] : [text];
         }
 
-        if (argument.ArgumentType.IsArray && argument.ArgumentType.GetElementType() == typeof(string))
+        // MetadataLoadContext types are not identity-equal to runtime typeof(string).
+        // Compare by name so string[] constructor args from plugin assemblies are recognized.
+        if (argument.ArgumentType.IsArray && IsStringType(argument.ArgumentType.GetElementType()))
         {
             return ExtractStringArray(argument.Value);
         }
 
+        // Some attribute encodings surface arrays only as IEnumerable of typed arguments.
+        if (argument.Value is IList<CustomAttributeTypedArgument> typedArguments
+            && typedArguments.Count > 0
+            && IsStringType(typedArguments[0].ArgumentType))
+        {
+            return typedArguments
+                .Select(item => (string)item.Value!)
+                .ToArray();
+        }
+
         return [];
     }
+
+    private static bool IsStringType(Type? type)
+        => type is not null
+           && (type == typeof(string)
+               || string.Equals(type.FullName, "System.String", StringComparison.Ordinal));
 
     public static string Parse(CustomAttributeTypedArgument argument)
         => Join(ParseArray(argument));
@@ -36,17 +53,14 @@ internal static class FilteringAttributesParser
 
     public static string FormatForCode(string[] attributes)
     {
+        // Pre-C# 12 array initializer — compatible with net462 plugin projects.
+        // Use doubled braces only if this value is ever embedded in a string.Format format string.
         if (attributes.Length == 0)
         {
-            return "[]";
+            return "new string[0]";
         }
 
-        if (attributes.Length == 1)
-        {
-            return $"[\"{attributes[0]}\"]";
-        }
-
-        return $"new[] {{ {string.Join(", ", attributes.Select(part => $"\"{part}\""))} }}";
+        return $"new string[] {{ {string.Join(", ", attributes.Select(part => $"\"{part}\""))} }}";
     }
 
     private static string Join(IEnumerable<string> filteringAttributes)

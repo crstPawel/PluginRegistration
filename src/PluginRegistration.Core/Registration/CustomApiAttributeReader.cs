@@ -1,6 +1,5 @@
 using System.Reflection;
 using PluginRegistration.Attributes;
-using PluginRegistration.Core.Config;
 
 namespace PluginRegistration.Core.Registration;
 
@@ -8,125 +7,50 @@ public static class CustomApiAttributeReader
 {
     public static CustomApiRegistrationModel Read(
         Type pluginType,
-        PluginRegistrationAttribute attribute,
-        CustomApiDefinition? profileOverride = null)
+        CustomApiRegistration attribute)
     {
-        if (string.IsNullOrWhiteSpace(attribute.Message))
+        if (string.IsNullOrWhiteSpace(attribute.UniqueName))
         {
             throw new PluginRegistrationException(
                 $"Custom API unique name is required on type '{pluginType.FullName}'.");
         }
 
-        var customApiCount = ReflectionHelper.GetRegistrationAttributes(pluginType)
-            .Select(AttributeParser.Parse)
-            .Count(AttributeParser.IsCustomApiRegistration);
+        var customApiCount = ReflectionHelper.GetCustomApiRegistrationAttributes(pluginType).Count();
         var hasMultipleCustomApis = customApiCount > 1;
 
-        var requestParameters = pluginType.GetCustomAttributesData()
-            .Where(data => data.AttributeType.Name == nameof(CustomApiRequestParameterAttribute))
+        // Enumerate CustomAttributeData carefully — MetadataLoadContext can throw when
+        // resolving AttributeType for some attributes; match by constructor declaring type too.
+        var requestParameters = GetCustomAttributesDataSafe(pluginType)
+            .Where(data => IsAttributeType(data, nameof(CustomApiRequestParameterAttribute)))
             .Select(ParseRequestParameter)
-            .Where(parameter => MatchesCustomApi(parameter.ApiUniqueName, attribute.Message!, hasMultipleCustomApis, pluginType))
+            .Where(parameter => MatchesCustomApi(parameter.ApiUniqueName, attribute.UniqueName, hasMultipleCustomApis, pluginType))
             .OrderBy(parameter => parameter.UniqueName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var responseProperties = pluginType.GetCustomAttributesData()
-            .Where(data => data.AttributeType.Name == nameof(CustomApiResponsePropertyAttribute))
+        var responseProperties = GetCustomAttributesDataSafe(pluginType)
+            .Where(data => IsAttributeType(data, nameof(CustomApiResponsePropertyAttribute)))
             .Select(ParseResponseProperty)
-            .Where(property => MatchesCustomApi(property.ApiUniqueName, attribute.Message!, hasMultipleCustomApis, pluginType))
+            .Where(property => MatchesCustomApi(property.ApiUniqueName, attribute.UniqueName, hasMultipleCustomApis, pluginType))
             .OrderBy(property => property.UniqueName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         ValidateUniqueNames(requestParameters, responseProperties, pluginType.FullName!);
 
-        var model = new CustomApiRegistrationModel
+        return new CustomApiRegistrationModel
         {
-            UniqueName = attribute.Message,
+            UniqueName = attribute.UniqueName,
             PluginTypeName = pluginType.FullName!,
-            DisplayName = string.IsNullOrWhiteSpace(attribute.FriendlyName)
-                ? attribute.Message
-                : attribute.FriendlyName,
+            DisplayName = string.IsNullOrWhiteSpace(attribute.DisplayName)
+                ? attribute.UniqueName
+                : attribute.DisplayName,
             Description = attribute.Description,
             BindingType = attribute.CustomApiBindingType,
             IsFunction = attribute.IsFunction,
             IsPrivate = attribute.IsPrivate,
             BoundEntityLogicalName = attribute.BoundEntityLogicalName,
-            AllowedCustomProcessingStepType = attribute.AllowedCustomProcessingStepType,
+            AllowedCustomProcessingStepType = attribute.ProcessingStepType,
             RequestParameters = requestParameters,
             ResponseProperties = responseProperties
-        };
-
-        return ApplyProfileOverride(model, profileOverride);
-    }
-
-    public static CustomApiRegistrationModel FromProfileDefinition(CustomApiDefinition definition)
-    {
-        return new CustomApiRegistrationModel
-        {
-            UniqueName = definition.UniqueName,
-            PluginTypeName = definition.PluginTypeName ?? string.Empty,
-            DisplayName = string.IsNullOrWhiteSpace(definition.DisplayName)
-                ? definition.UniqueName
-                : definition.DisplayName,
-            Description = definition.Description,
-            BindingType = (CustomApiBindingTypeEnum)definition.BindingType,
-            IsFunction = definition.IsFunction,
-            IsPrivate = definition.IsPrivate,
-            BoundEntityLogicalName = definition.BoundEntityLogicalName,
-            AllowedCustomProcessingStepType = (CustomApiProcessingStepTypeEnum)definition.AllowedCustomProcessingStepType,
-            RequestParameters = definition.RequestParameters
-                .Select(parameter => new CustomApiParameterModel
-                {
-                    UniqueName = parameter.UniqueName,
-                    Type = (CustomApiParameterTypeEnum)parameter.Type,
-                    DisplayName = string.IsNullOrWhiteSpace(parameter.DisplayName)
-                        ? parameter.UniqueName
-                        : parameter.DisplayName,
-                    Description = parameter.Description,
-                    IsRequired = parameter.IsRequired,
-                    EntityLogicalName = parameter.EntityLogicalName
-                })
-                .ToList(),
-            ResponseProperties = definition.ResponseProperties
-                .Select(property => new CustomApiParameterModel
-                {
-                    UniqueName = property.UniqueName,
-                    Type = (CustomApiParameterTypeEnum)property.Type,
-                    DisplayName = string.IsNullOrWhiteSpace(property.DisplayName)
-                        ? property.UniqueName
-                        : property.DisplayName,
-                    Description = property.Description,
-                    EntityLogicalName = property.EntityLogicalName
-                })
-                .ToList()
-        };
-    }
-
-    private static CustomApiRegistrationModel ApplyProfileOverride(
-        CustomApiRegistrationModel model,
-        CustomApiDefinition? profileOverride)
-    {
-        if (profileOverride is null)
-        {
-            return model;
-        }
-
-        return new CustomApiRegistrationModel
-        {
-            UniqueName = model.UniqueName,
-            PluginTypeName = string.IsNullOrWhiteSpace(profileOverride.PluginTypeName)
-                ? model.PluginTypeName
-                : profileOverride.PluginTypeName,
-            DisplayName = string.IsNullOrWhiteSpace(profileOverride.DisplayName)
-                ? model.DisplayName
-                : profileOverride.DisplayName,
-            Description = profileOverride.Description ?? model.Description,
-            BindingType = model.BindingType,
-            IsFunction = model.IsFunction,
-            IsPrivate = model.IsPrivate,
-            BoundEntityLogicalName = model.BoundEntityLogicalName,
-            AllowedCustomProcessingStepType = model.AllowedCustomProcessingStepType,
-            RequestParameters = model.RequestParameters,
-            ResponseProperties = model.ResponseProperties
         };
     }
 
@@ -225,6 +149,50 @@ public static class CustomApiAttributeReader
         }
 
         return true;
+    }
+
+    private static IEnumerable<CustomAttributeData> GetCustomAttributesDataSafe(Type pluginType)
+    {
+        try
+        {
+            return pluginType.GetCustomAttributesData();
+        }
+        catch (FileNotFoundException)
+        {
+            return [];
+        }
+        catch (TypeLoadException)
+        {
+            return [];
+        }
+    }
+
+    private static bool IsAttributeType(CustomAttributeData data, string attributeTypeName)
+    {
+        try
+        {
+            if (string.Equals(data.AttributeType.Name, attributeTypeName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        catch (FileNotFoundException)
+        {
+            // Fall through to constructor declaring type.
+        }
+        catch (TypeLoadException)
+        {
+            // Fall through to constructor declaring type.
+        }
+
+        try
+        {
+            return string.Equals(data.Constructor.DeclaringType?.Name, attributeTypeName, StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static void ValidateUniqueNames(

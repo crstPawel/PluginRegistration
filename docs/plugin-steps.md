@@ -2,12 +2,11 @@
 
 Step structure (message, entity, stage, mode, images) is defined **in code**. On `deploy`, the tool:
 
-1. Uploads/updates `pluginassembly` (DLL as base64)
-2. Registers/updates `plugintype` per class with attributes
+1. Uploads/updates `pluginpackage` (full `.nupkg` as base64); Dataverse creates linked assemblies
+2. Registers/updates steps against server-created `plugintype` records per class with attributes
 3. Creates/updates `sdkmessageprocessingstep` and images
 4. Removes steps no longer declared in attributes
-5. Applies `stepOverrides` from the active profile
-6. Optionally adds components to the solution
+5. Optionally adds components to the solution
 
 ## Basic attribute
 
@@ -24,7 +23,7 @@ public class AccountCreatePlugin : IPlugin { ... }
 
 Constructor parameters: `message`, `entityLogicalName`, `stage`, `executionMode`, `filteringAttributes` (`string[]`), `executionOrder`.
 
-Named properties: `Id`, `Name`, `DeleteAsyncOperation`, `UnSecureConfiguration`, `SecureConfiguration`, `Server`, `Action`.
+Named properties: `Id`, `Name`, `DeleteAsyncOperation`, `Server`, `Action`.
 
 ## Step with image and stable GUID
 
