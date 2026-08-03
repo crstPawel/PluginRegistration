@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using PluginRegistration.Core.Registration;
 using Xunit;
 
@@ -10,22 +9,17 @@ namespace PluginRegistration.Core.Tests;
 /// </summary>
 public sealed class ReflectionHelperTests
 {
-    private static readonly string SamplePluginsDir = Path.GetFullPath(
-        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "Sample.Plugins"));
-
-    private static readonly string SamplePluginsDll = Path.Combine(
-        SamplePluginsDir, "bin", "Debug", "net462", "Sample.Plugins.dll");
-
     [Fact]
     public void GetPluginTypes_FindsAllPluginsInSampleAssembly()
     {
-        EnsureSamplePluginsBuilt();
+        SamplePluginsTestHost.EnsureBuilt();
 
-        Assert.True(File.Exists(SamplePluginsDll), $"Expected sample plugin assembly at {SamplePluginsDll}");
+        var dll = SamplePluginsTestHost.AssemblyPath;
+        Assert.True(File.Exists(dll), $"Expected sample plugin assembly at {dll}");
 
-        var directory = Path.GetDirectoryName(SamplePluginsDll)!;
+        var directory = Path.GetDirectoryName(dll)!;
         using var context = ReflectionHelper.CreateLoadContext(directory);
-        var assembly = ReflectionHelper.LoadAssembly(context, SamplePluginsDll);
+        var assembly = ReflectionHelper.LoadAssembly(context, dll);
 
         Assert.NotNull(assembly);
 
@@ -50,11 +44,12 @@ public sealed class ReflectionHelperTests
     [Fact]
     public void GetPluginTypes_ExcludesAbstractClassesAndNonPlugins()
     {
-        EnsureSamplePluginsBuilt();
+        SamplePluginsTestHost.EnsureBuilt();
 
-        var directory = Path.GetDirectoryName(SamplePluginsDll)!;
+        var dll = SamplePluginsTestHost.AssemblyPath;
+        var directory = Path.GetDirectoryName(dll)!;
         using var context = ReflectionHelper.CreateLoadContext(directory);
-        var assembly = ReflectionHelper.LoadAssembly(context, SamplePluginsDll)!;
+        var assembly = ReflectionHelper.LoadAssembly(context, dll)!;
 
         var allTypes = assembly.GetTypes();
         var pluginTypes = ReflectionHelper.GetPluginTypes(assembly).ToHashSet();
@@ -71,60 +66,24 @@ public sealed class ReflectionHelperTests
     [Fact]
     public void CreateLoadContext_DoesNotThrowForNetFrameworkPluginAssembly()
     {
-        EnsureSamplePluginsBuilt();
+        SamplePluginsTestHost.EnsureBuilt();
 
-        var directory = Path.GetDirectoryName(SamplePluginsDll)!;
+        var dll = SamplePluginsTestHost.AssemblyPath;
+        var directory = Path.GetDirectoryName(dll)!;
 
         // The main verification for the original error: this must succeed for net462 plugins
         // when the tool itself runs on modern .NET (net10+).
         using var context = ReflectionHelper.CreateLoadContext(directory);
-        var assembly = ReflectionHelper.LoadAssembly(context, SamplePluginsDll);
+        var assembly = ReflectionHelper.LoadAssembly(context, dll);
 
         Assert.NotNull(assembly);
         Assert.NotEmpty(ReflectionHelper.GetPluginTypes(assembly));
     }
 
-    private static void EnsureSamplePluginsBuilt()
-    {
-        if (File.Exists(SamplePluginsDll))
-        {
-            // If the dll exists and is reasonably fresh, still ensure it is up to date for changed base class.
-            // For simplicity we always (re)build in test.
-        }
-
-        var projectFile = Path.Combine(SamplePluginsDir, "Sample.Plugins.csproj");
-        Assert.True(File.Exists(projectFile), $"Sample project not found: {projectFile}");
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            Arguments = $"build \"{projectFile}\" -c Debug --no-restore --nologo --verbosity quiet",
-            WorkingDirectory = SamplePluginsDir,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        using var process = Process.Start(psi)!;
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit(120_000);
-
-        if (process.ExitCode != 0)
-        {
-            throw new Xunit.Sdk.XunitException(
-                $"Failed to build sample plugins for test.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
-        }
-
-        // Give filesystem a moment if needed
-        Thread.Sleep(200);
-    }
-
     [Fact]
     public void GetPluginTypes_WorksEvenWhenMicrosoftXrmSdkIsMissingFromPluginDirectory()
     {
-        EnsureSamplePluginsBuilt();
+        SamplePluginsTestHost.EnsureBuilt();
 
         // This simulates the very common real-world situation:
         // - Plugin DLL + our Attributes DLL are present.
@@ -134,8 +93,9 @@ public sealed class ReflectionHelperTests
         var isolatedDir = temp.Path;
 
         // Copy only what a minimal package usually ships
-        var pluginDll = Path.Combine(SamplePluginsDir, "bin", "Debug", "net462", "Sample.Plugins.dll");
-        var attrDll = Path.Combine(SamplePluginsDir, "bin", "Debug", "net462", "PluginRegistration.Attributes.dll");
+        var pluginDll = SamplePluginsTestHost.AssemblyPath;
+        var attrDll = Path.Combine(
+            SamplePluginsTestHost.ProjectDirectory, "bin", "Debug", "net462", "PluginRegistration.Attributes.dll");
 
         File.Copy(pluginDll, Path.Combine(isolatedDir, "Sample.Plugins.dll"), overwrite: true);
         if (File.Exists(attrDll))
