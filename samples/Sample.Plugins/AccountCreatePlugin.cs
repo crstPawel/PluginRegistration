@@ -22,7 +22,7 @@ namespace Sample.Plugins
 
     [CustomApiRegistration(
         "sample_ProcessAccount",
-        FriendlyName = "Process Account",
+        DisplayName = "Process Account",
         Description = "Sample Custom API that processes an account identifier")]
     [CustomApiRequestParameter("AccountId", CustomApiParameterTypeEnum.String, IsRequired = true, Description = "Account identifier")]
     [CustomApiResponseProperty("Success", CustomApiParameterTypeEnum.Boolean, Description = "Whether processing succeeded")]

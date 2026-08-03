@@ -22,18 +22,47 @@ public static class ReflectionHelper
         "Microsoft.Rest.ClientRuntime.dll"
     };
 
+    private static readonly string[] RegistrationAttributeNames =
+    [
+        "PluginRegistrationAttribute",
+        "CrmPluginRegistrationAttribute",
+        "CustomApiRegistration",
+        "CustomApiRegistrationAttribute",
+        "CrmCustomApiRegistration",
+        "CrmCustomApiRegistrationAttribute"
+    ];
+
     public static bool ShouldIgnoreAssembly(string fileName) => IgnoredAssemblies.Contains(fileName);
 
     public static MetadataLoadContext CreateLoadContext(string assemblyDirectory)
     {
-        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-        var resolverPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            runtimeDir,
-            assemblyDirectory
-        };
+        // PathAssemblyResolver requires concrete assembly file paths (not directories).
+        // On modern .NET the core assembly is System.Private.CoreLib; include the whole
+        // runtime directory so MetadataLoadContext can resolve System.Runtime / netstandard.
+        var resolverPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var dll in Directory.EnumerateFiles(assemblyDirectory, "*.dll"))
+        var runtimeDir = System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory();
+        foreach (var dll in Directory.EnumerateFiles(runtimeDir, "*.dll"))
+        {
+            resolverPaths.Add(dll);
+        }
+
+        var coreLibLocation = typeof(object).Assembly.Location;
+        if (!string.IsNullOrWhiteSpace(coreLibLocation))
+        {
+            resolverPaths.Add(coreLibLocation);
+        }
+
+        if (Directory.Exists(assemblyDirectory))
+        {
+            foreach (var dll in Directory.EnumerateFiles(assemblyDirectory, "*.dll"))
+            {
+                resolverPaths.Add(dll);
+            }
+        }
+
+        // When Xrm assemblies are PrivateAssets / not copied next to the plugin, probe the NuGet cache.
+        foreach (var dll in ProbeNuGetPackageDlls("microsoft.crmsdk.coreassemblies", "Microsoft.Xrm.Sdk.dll", "Microsoft.Crm.Sdk.Proxy.dll"))
         {
             resolverPaths.Add(dll);
         }
@@ -55,16 +84,122 @@ public static class ReflectionHelper
 
     public static IEnumerable<Type> GetPluginTypes(Assembly assembly)
     {
-        return assembly.GetTypes()
-            .Where(type => type.IsClass
-                && !type.IsAbstract
-                && type.GetInterfaces().Any(i => i.Name == "IPlugin"));
+        return GetLoadableTypes(assembly)
+            .Where(IsConcretePluginType);
     }
 
     public static IEnumerable<Type> GetWorkflowActivityTypes(Assembly assembly)
     {
-        return assembly.GetTypes()
-            .Where(type => InheritsFromCodeActivity(type));
+        return GetLoadableTypes(assembly)
+            .Where(type =>
+            {
+                try
+                {
+                    return InheritsFromCodeActivity(type);
+                }
+                catch (FileNotFoundException)
+                {
+                    return false;
+                }
+                catch (TypeLoadException)
+                {
+                    return false;
+                }
+            });
+    }
+
+    private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            return ex.Types.Where(type => type is not null)!;
+        }
+    }
+
+    private static bool IsConcretePluginType(Type type)
+    {
+        try
+        {
+            if (!type.IsClass || type.IsAbstract)
+            {
+                return false;
+            }
+
+            if (type.GetInterfaces().Any(i => string.Equals(i.Name, "IPlugin", StringComparison.Ordinal)))
+            {
+                return true;
+            }
+        }
+        catch (FileNotFoundException)
+        {
+            // Microsoft.Xrm.Sdk (or another dependency) missing — fall through to attributes.
+        }
+        catch (TypeLoadException)
+        {
+            // Base type / interface could not be loaded.
+        }
+
+        // Attribute-based fallback: types decorated with registration attributes are plugins
+        // even when IPlugin cannot be resolved without the CRM SDK assembly.
+        return HasRegistrationAttributes(type);
+    }
+
+    private static bool HasRegistrationAttributes(Type type)
+    {
+        try
+        {
+            foreach (var data in type.GetCustomAttributesData())
+            {
+                if (IsRegistrationAttribute(data))
+                {
+                    return true;
+                }
+            }
+        }
+        catch (FileNotFoundException)
+        {
+            return false;
+        }
+        catch (TypeLoadException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool IsRegistrationAttribute(CustomAttributeData data)
+    {
+        try
+        {
+            if (RegistrationAttributeNames.Contains(data.AttributeType.Name, StringComparer.Ordinal))
+            {
+                return true;
+            }
+        }
+        catch (FileNotFoundException)
+        {
+            // Fall through to constructor declaring type.
+        }
+        catch (TypeLoadException)
+        {
+            // Fall through to constructor declaring type.
+        }
+
+        try
+        {
+            var declaringName = data.Constructor.DeclaringType?.Name;
+            return declaringName is not null
+                   && RegistrationAttributeNames.Contains(declaringName, StringComparer.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool InheritsFromCodeActivity(Type type)
@@ -86,7 +221,7 @@ public static class ReflectionHelper
     public static IEnumerable<CustomAttributeData> GetRegistrationAttributes(Type type)
     {
         var attributes = type.GetCustomAttributesData()
-            .Where(a => a.AttributeType.Name == "PluginRegistrationAttribute")
+            .Where(a => a.AttributeType.Name is "PluginRegistrationAttribute" or "CrmPluginRegistrationAttribute")
             .ToList();
 
         var duplicateNames = attributes
@@ -104,5 +239,54 @@ public static class ReflectionHelper
         }
 
         return attributes;
+    }
+
+    public static IEnumerable<CustomAttributeData> GetCustomApiRegistrationAttributes(Type type)
+    {
+        return type.GetCustomAttributesData()
+            .Where(a => a.AttributeType.Name is "CustomApiRegistration" or "CustomApiRegistrationAttribute"
+                or "CrmCustomApiRegistration" or "CrmCustomApiRegistrationAttribute");
+    }
+
+    private static IEnumerable<string> ProbeNuGetPackageDlls(string packageId, params string[] fileNames)
+    {
+        var packagesRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".nuget",
+            "packages",
+            packageId);
+
+        if (!Directory.Exists(packagesRoot))
+        {
+            yield break;
+        }
+
+        // Prefer the newest package version that has the requested assemblies.
+        foreach (var versionDir in Directory.EnumerateDirectories(packagesRoot)
+                     .OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase))
+        {
+            var libDir = Path.Combine(versionDir, "lib");
+            if (!Directory.Exists(libDir))
+            {
+                continue;
+            }
+
+            var foundAny = false;
+            foreach (var fileName in fileNames)
+            {
+                var match = Directory.EnumerateFiles(libDir, fileName, SearchOption.AllDirectories)
+                    .FirstOrDefault();
+                if (match is not null)
+                {
+                    foundAny = true;
+                    yield return match;
+                }
+            }
+
+            if (foundAny)
+            {
+                yield break;
+            }
+        }
     }
 }

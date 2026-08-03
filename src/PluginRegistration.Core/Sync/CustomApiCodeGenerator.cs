@@ -27,40 +27,32 @@ public static class CustomApiCodeGenerator
     private static string GenerateMainAttribute(CustomApiRegistration attribute, string linePrefix)
     {
         var uniqueName = attribute.UniqueName;
-        var displayName = attribute.DisplayName ?? uniqueName;
-        var bindingType = attribute.CustomApiBindingType;
-        var processingStepType = attribute.ProcessingStepType;
-        var boundEntity = attribute.BoundEntityLogicalName ?? string.Empty;
-
-        string constructor;
-        if (bindingType != CustomApiBindingTypeEnum.Global
-            || processingStepType != CustomApiProcessingStepTypeEnum.None
-            || !string.IsNullOrWhiteSpace(boundEntity))
-        {
-            constructor =
-                $"\"{Escape(uniqueName)}\", \"{Escape(displayName)}\", CustomApiProcessingStepTypeEnum.{processingStepType}, CustomApiBindingTypeEnum.{bindingType}, \"{Escape(boundEntity)}\"";
-        }
-        else if (!string.Equals(displayName, uniqueName, StringComparison.Ordinal))
-        {
-            constructor = $"\"{Escape(uniqueName)}\", \"{Escape(displayName)}\"";
-        }
-        else
-        {
-            constructor = $"\"{Escape(uniqueName)}\"";
-        }
-
         var extras = string.Empty;
 
-        if (constructor.StartsWith($"\"{Escape(uniqueName)}\"", StringComparison.Ordinal)
-            && !string.Equals(displayName, uniqueName, StringComparison.Ordinal)
-            && !constructor.Contains("\", \"", StringComparison.Ordinal))
+        if (!string.IsNullOrWhiteSpace(attribute.DisplayName)
+            && !string.Equals(attribute.DisplayName, uniqueName, StringComparison.Ordinal))
         {
-            extras += $", FriendlyName = \"{Escape(displayName)}\"";
+            extras += $", DisplayName = \"{Escape(attribute.DisplayName)}\"";
         }
 
         if (!string.IsNullOrWhiteSpace(attribute.Description))
         {
             extras += $", Description = \"{Escape(attribute.Description)}\"";
+        }
+
+        if (attribute.CustomApiBindingType != CustomApiBindingTypeEnum.Global)
+        {
+            extras += $", CustomApiBindingType = CustomApiBindingTypeEnum.{attribute.CustomApiBindingType}";
+        }
+
+        if (attribute.ProcessingStepType != CustomApiProcessingStepTypeEnum.None)
+        {
+            extras += $", ProcessingStepType = CustomApiProcessingStepTypeEnum.{attribute.ProcessingStepType}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(attribute.BoundEntityLogicalName))
+        {
+            extras += $", BoundEntityLogicalName = \"{Escape(attribute.BoundEntityLogicalName)}\"";
         }
 
         if (attribute.IsFunction)
@@ -78,7 +70,7 @@ public static class CustomApiCodeGenerator
             extras += $", ExecutePrivilegeName = \"{Escape(attribute.ExecutePrivilegeName)}\"";
         }
 
-        return $"{linePrefix}[CustomApiRegistration({constructor}{extras})]";
+        return $"{linePrefix}[CustomApiRegistration(\"{Escape(uniqueName)}\"{extras})]";
     }
 
     private static string GenerateRequestParameter(CustomApiParameterModel parameter, string linePrefix)

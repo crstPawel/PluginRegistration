@@ -7,10 +7,12 @@ namespace PluginRegistration.Core.Sync;
 
 public sealed class CodeParser
 {
-    private const string AttributeRegex = @"([ ]*?)\[CrmPluginRegistration\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
-    private const string StepImageRegex = @"([ ]*?)\[CrmPluginStepImage\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
-    private const string RequestParameterRegex = @"([ ]*?)\[CrmCustomApiRequestParameter\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
-    private const string ResponsePropertyRegex = @"([ ]*?)\[CrmCustomApiResponseProperty\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
+    // Current attribute names, plus legacy Crm* prefixes for older source trees.
+    private const string AttributeRegex = @"([ ]*?)\[(?:Crm)?PluginRegistration\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
+    private const string StepImageRegex = @"([ ]*?)\[(?:Crm)?PluginStepImage\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
+    private const string CustomApiRegex = @"([ ]*?)\[(?:Crm)?CustomApiRegistration\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
+    private const string RequestParameterRegex = @"([ ]*?)\[(?:Crm)?CustomApiRequestParameter\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
+    private const string ResponsePropertyRegex = @"([ ]*?)\[(?:Crm)?CustomApiResponseProperty\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
 
     private readonly string _filePath;
     private string _code;
@@ -106,32 +108,27 @@ public sealed class CodeParser
     public int RemoveExistingAttributes()
     {
         var count = 0;
-        _code = Regex.Replace(_code, AttributeRegex, _ =>
+        foreach (var pattern in new[]
+                 {
+                     AttributeRegex,
+                     StepImageRegex,
+                     CustomApiRegex,
+                     RequestParameterRegex,
+                     ResponsePropertyRegex
+                 })
         {
-            count++;
-            return string.Empty;
-        });
-        _code = Regex.Replace(_code, StepImageRegex, _ =>
-        {
-            count++;
-            return string.Empty;
-        });
-        _code = Regex.Replace(_code, RequestParameterRegex, _ =>
-        {
-            count++;
-            return string.Empty;
-        });
-        _code = Regex.Replace(_code, ResponsePropertyRegex, _ =>
-        {
-            count++;
-            return string.Empty;
-        });
+            _code = Regex.Replace(_code, pattern, _ =>
+            {
+                count++;
+                return string.Empty;
+            });
+        }
 
         return count;
     }
 
     public void AddCustomApiAttributes(
-        PluginRegistrationAttribute attribute,
+        CustomApiRegistration attribute,
         IEnumerable<CustomApiParameterModel> requestParameters,
         IEnumerable<CustomApiParameterModel> responseProperties,
         string className)
@@ -164,14 +161,12 @@ public sealed class CodeParser
     }
 
     public void AddStepImageAttributes(
-        StageEnum stage,
-        string? message,
         IEnumerable<PluginStepImageModel> images,
         string className)
     {
         var indentation = GetIndentation(className);
         var blocks = images
-            .Select(image => PluginStepImageCodeGenerator.Generate(stage, message, image, indentation))
+            .Select(image => PluginStepImageCodeGenerator.Generate(image, indentation))
             .ToList();
 
         if (blocks.Count == 0)
