@@ -36,12 +36,6 @@ public static class AttributeParser
                 case nameof(PluginRegistrationAttribute.DeleteAsyncOperation):
                     attribute.DeleteAsyncOperation = (bool)namedArgument.TypedValue.Value!;
                     break;
-                case nameof(PluginRegistrationAttribute.UnSecureConfiguration):
-                    attribute.UnSecureConfiguration = (string?)namedArgument.TypedValue.Value;
-                    break;
-                case nameof(PluginRegistrationAttribute.SecureConfiguration):
-                    attribute.SecureConfiguration = (string?)namedArgument.TypedValue.Value;
-                    break;
                 case nameof(PluginRegistrationAttribute.Server):
                     attribute.Server = (bool)namedArgument.TypedValue.Value!;
                     break;

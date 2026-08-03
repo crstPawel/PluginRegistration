@@ -7,9 +7,10 @@ namespace PluginRegistration.Core.Sync;
 
 public sealed class CodeParser
 {
-    private const string PluginRegistrationRegex = @"([ ]*?)\[(?:Crm)?PluginRegistration\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
-    private const string CustomApiRegistrationRegex = @"([ ]*?)\[CustomApiRegistration\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
+    // Current attribute names, plus legacy Crm* prefixes for older source trees.
+    private const string AttributeRegex = @"([ ]*?)\[(?:Crm)?PluginRegistration\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
     private const string StepImageRegex = @"([ ]*?)\[(?:Crm)?PluginStepImage\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
+    private const string CustomApiRegex = @"([ ]*?)\[(?:Crm)?CustomApiRegistration\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
     private const string RequestParameterRegex = @"([ ]*?)\[(?:Crm)?CustomApiRequestParameter\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
     private const string ResponsePropertyRegex = @"([ ]*?)\[(?:Crm)?CustomApiResponseProperty\(([\W\w\s]+?)(\)\])([ ]*?(\r\n|\r|\n))";
 
@@ -107,31 +108,21 @@ public sealed class CodeParser
     public int RemoveExistingAttributes()
     {
         var count = 0;
-        _code = Regex.Replace(_code, PluginRegistrationRegex, _ =>
+        foreach (var pattern in new[]
+                 {
+                     AttributeRegex,
+                     StepImageRegex,
+                     CustomApiRegex,
+                     RequestParameterRegex,
+                     ResponsePropertyRegex
+                 })
         {
-            count++;
-            return string.Empty;
-        });
-        _code = Regex.Replace(_code, CustomApiRegistrationRegex, _ =>
-        {
-            count++;
-            return string.Empty;
-        });
-        _code = Regex.Replace(_code, StepImageRegex, _ =>
-        {
-            count++;
-            return string.Empty;
-        });
-        _code = Regex.Replace(_code, RequestParameterRegex, _ =>
-        {
-            count++;
-            return string.Empty;
-        });
-        _code = Regex.Replace(_code, ResponsePropertyRegex, _ =>
-        {
-            count++;
-            return string.Empty;
-        });
+            _code = Regex.Replace(_code, pattern, _ =>
+            {
+                count++;
+                return string.Empty;
+            });
+        }
 
         return count;
     }

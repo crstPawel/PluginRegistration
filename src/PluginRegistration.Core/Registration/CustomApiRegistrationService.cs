@@ -1,6 +1,5 @@
 using Microsoft.Xrm.Sdk;
 using PluginRegistration.Attributes;
-using PluginRegistration.Core.Config;
 using PluginRegistration.Core.Connection;
 using PluginRegistration.Core.Model.Entities;
 
@@ -15,6 +14,9 @@ public sealed class CustomApiRegistrationService
     private readonly IOrganizationService _service;
     private readonly DataverseQueries _queries;
     private readonly ITrace _trace;
+    private readonly SolutionEnsureService _solutionEnsure;
+    private readonly SolutionComponentTypeResolver _componentTypes;
+    private readonly Dictionary<string, string> _publisherPrefixBySolution = new(StringComparer.OrdinalIgnoreCase);
     private string? _solutionUniqueName;
 
     public CustomApiRegistrationService(IOrganizationService service, ITrace trace)
@@ -22,6 +24,8 @@ public sealed class CustomApiRegistrationService
         _service = service;
         _queries = new DataverseQueries(service);
         _trace = trace;
+        _solutionEnsure = new SolutionEnsureService(service, trace);
+        _componentTypes = new SolutionComponentTypeResolver(service);
     }
 
     public string? SolutionUniqueName
@@ -36,6 +40,17 @@ public sealed class CustomApiRegistrationService
         {
             throw new PluginRegistrationException("Custom API uniqueName is required.");
         }
+
+        // Dataverse requires customapi / parameter uniquename to start with a valid publisher
+        // customization prefix. When plugins[].solution is set, use that solution's publisher
+        // (not a hard-coded / default prefix).
+        model = ApplySolutionPublisherPrefix(model);
+
+        _trace.WriteLine(
+            "Registering Custom API '{0}' from attributes/model ({1} request parameter(s), {2} response propert(y/ies))",
+            model.UniqueName,
+            model.RequestParameters.Count,
+            model.ResponseProperties.Count);
 
         var existing = _queries.GetCustomApiDetails(model.UniqueName);
         if (existing is null)
@@ -57,50 +72,36 @@ public sealed class CustomApiRegistrationService
         UpdateCustomApi(existing, model, pluginTypeId);
     }
 
-    public void EnsureCustomApis(IEnumerable<CustomApiDefinition> definitions)
-    {
-        foreach (var definition in definitions)
-        {
-            if (string.IsNullOrWhiteSpace(definition.PluginTypeName))
-            {
-                _trace.WriteLine(
-                    "Skipping profile Custom API '{0}' because pluginTypeName is not set.",
-                    definition.UniqueName);
-                continue;
-            }
-
-            var pluginType = _queries.GetPluginTypeByTypeName(definition.PluginTypeName);
-            if (pluginType is null)
-            {
-                throw new PluginRegistrationException(
-                    $"Plugin type '{definition.PluginTypeName}' must be deployed before Custom API '{definition.UniqueName}' (createIfMissing). " +
-                    "Make sure the assembly is built, the 'assemblyPath' in pluginregistration.json points to the correct folder containing the DLL, " +
-                    "and the plugin class was registered in this (or a previous) deploy.");
-            }
-
-            RegisterCustomApi(CustomApiAttributeReader.FromProfileDefinition(definition), pluginType.Id);
-        }
-    }
-
     private void CreateCustomApiTree(CustomApiRegistrationModel model, Guid pluginTypeId)
     {
+        EnsureSolutionReady();
+
         var record = BuildCustomApiEntity(model, pluginTypeId);
-        _trace.WriteLine("Creating Custom API '{0}'", model.UniqueName);
-        var customApiId = _service.Create(record);
+        _trace.WriteLine(
+            "Creating Custom API '{0}' ({1} request parameter(s), {2} response propert(y/ies))",
+            model.UniqueName,
+            model.RequestParameters.Count,
+            model.ResponseProperties.Count);
+
+        // Solution-aware tables: Create with SolutionUniqueName (official path).
+        // Component types 371/372 are Connectors — never use those for customapi.
+        var customApiId = DataverseOrganizationRequests.CreateWithSolution(
+            _service,
+            record,
+            SolutionUniqueName);
 
         foreach (var parameter in model.RequestParameters)
         {
-            var parameterId = CreateRequestParameter(customApiId, parameter);
-            AddComponentToSolution(SolutionComponentTypes.CustomApiRequestParameter, parameterId);
+            CreateRequestParameter(customApiId, parameter);
         }
 
         foreach (var property in model.ResponseProperties)
         {
-            var propertyId = CreateResponseProperty(customApiId, property);
-            AddComponentToSolution(SolutionComponentTypes.CustomApiResponseProperty, propertyId);
+            CreateResponseProperty(customApiId, property);
         }
 
-        AddComponentToSolution(SolutionComponentTypes.CustomApi, customApiId, addRequiredComponents: true);
+        // Ensure API + children are in the solution (OTC from metadata + required components).
+        AddCustomApiWithRequiredComponentsToSolution(customApiId, model.UniqueName);
     }
 
     private void UpdateCustomApi(
@@ -108,22 +109,25 @@ public sealed class CustomApiRegistrationService
         CustomApiRegistrationModel model,
         Guid pluginTypeId)
     {
+        string displayName = ResolveDisplayName(model.DisplayName, model.UniqueName);
         var update = new Entity(CustomAPI.EntityLogicalName, existing.Api.Id)
         {
-            ["displayname"] = model.DisplayName,
-            ["description"] = model.Description,
+            ["displayname"] = displayName,
+            ["description"] = ResolveDescription(model.Description, displayName, model.UniqueName),
             ["isprivate"] = model.IsPrivate,
             ["allowedcustomprocessingsteptype"] = new OptionSetValue((int)model.AllowedCustomProcessingStepType),
             ["plugintypeid"] = new EntityReference(PluginType.EntityLogicalName, pluginTypeId)
         };
 
         _trace.WriteLine("Updating Custom API '{0}'", model.UniqueName);
-        _service.Update(update);
+        DataverseOrganizationRequests.UpdateWithSolution(_service, update, SolutionUniqueName);
 
         SyncRequestParameters(existing, model);
         SyncResponseProperties(existing, model);
 
-        AddComponentToSolution(SolutionComponentTypes.CustomApi, existing.Api.Id, addRequiredComponents: true);
+        // After parameters/properties exist, re-add Custom API with required components so new
+        // children land in the solution (GUI: Add required objects).
+        AddCustomApiWithRequiredComponentsToSolution(existing.Api.Id, model.UniqueName);
     }
 
     private void SyncRequestParameters(CustomApiDetails existing, CustomApiRegistrationModel model)
@@ -153,13 +157,18 @@ public sealed class CustomApiRegistrationService
         {
             if (refreshed.TryGetValue(parameter.UniqueName, out var current))
             {
+                // Update only — do not re-run AddSolutionComponent on every deploy.
+                // AddSolutionComponent for type 371 can fail with msdyn_Connector MetadataCache
+                // on some environments even when AddRequiredComponents=false.
                 UpdateRequestParameter(current.Id, parameter);
-                AddComponentToSolution(SolutionComponentTypes.CustomApiRequestParameter, current.Id);
                 continue;
             }
 
-            var parameterId = CreateRequestParameter(existing.Api.Id, parameter);
-            AddComponentToSolution(SolutionComponentTypes.CustomApiRequestParameter, parameterId);
+            _trace.WriteLine(
+                "Creating missing Custom API request parameter '{0}' on '{1}'",
+                parameter.UniqueName,
+                model.UniqueName);
+            CreateRequestParameter(existing.Api.Id, parameter);
         }
     }
 
@@ -191,12 +200,14 @@ public sealed class CustomApiRegistrationService
             if (refreshed.TryGetValue(property.UniqueName, out var current))
             {
                 UpdateResponseProperty(current.Id, property);
-                AddComponentToSolution(SolutionComponentTypes.CustomApiResponseProperty, current.Id);
                 continue;
             }
 
-            var propertyId = CreateResponseProperty(existing.Api.Id, property);
-            AddComponentToSolution(SolutionComponentTypes.CustomApiResponseProperty, propertyId);
+            _trace.WriteLine(
+                "Creating missing Custom API response property '{0}' on '{1}'",
+                property.UniqueName,
+                model.UniqueName);
+            CreateResponseProperty(existing.Api.Id, property);
         }
     }
 
@@ -299,12 +310,13 @@ public sealed class CustomApiRegistrationService
 
     private static Entity BuildCustomApiEntity(CustomApiRegistrationModel model, Guid pluginTypeId)
     {
+        string displayName = ResolveDisplayName(model.DisplayName, model.UniqueName);
         var record = new Entity(CustomAPI.EntityLogicalName)
         {
             ["uniquename"] = model.UniqueName,
             ["name"] = model.UniqueName,
-            ["displayname"] = model.DisplayName,
-            ["description"] = model.Description,
+            ["displayname"] = displayName,
+            ["description"] = ResolveDescription(model.Description, displayName, model.UniqueName),
             ["bindingtype"] = new OptionSetValue((int)model.BindingType),
             ["isfunction"] = model.IsFunction,
             ["isprivate"] = model.IsPrivate,
@@ -322,13 +334,14 @@ public sealed class CustomApiRegistrationService
 
     private Guid CreateRequestParameter(Guid customApiId, CustomApiParameterModel parameter)
     {
+        string displayName = ResolveDisplayName(parameter.DisplayName, parameter.UniqueName);
         var record = new Entity(CustomAPIRequestParameter.EntityLogicalName)
         {
             ["customapiid"] = new EntityReference(CustomAPI.EntityLogicalName, customApiId),
             ["uniquename"] = parameter.UniqueName,
             ["name"] = parameter.UniqueName,
-            ["displayname"] = parameter.DisplayName,
-            ["description"] = parameter.Description,
+            ["displayname"] = displayName,
+            ["description"] = ResolveDescription(parameter.Description, displayName, parameter.UniqueName),
             ["type"] = new OptionSetValue((int)parameter.Type),
             ["isoptional"] = !parameter.IsRequired
         };
@@ -339,31 +352,33 @@ public sealed class CustomApiRegistrationService
         }
 
         _trace.WriteLine("Creating Custom API request parameter '{0}'", parameter.UniqueName);
-        return _service.Create(record);
+        return DataverseOrganizationRequests.CreateWithSolution(_service, record, SolutionUniqueName);
     }
 
     private void UpdateRequestParameter(Guid parameterId, CustomApiParameterModel parameter)
     {
+        string displayName = ResolveDisplayName(parameter.DisplayName, parameter.UniqueName);
         var record = new Entity(CustomAPIRequestParameter.EntityLogicalName, parameterId)
         {
-            ["displayname"] = parameter.DisplayName,
-            ["description"] = parameter.Description,
+            ["displayname"] = displayName,
+            ["description"] = ResolveDescription(parameter.Description, displayName, parameter.UniqueName),
             ["isoptional"] = !parameter.IsRequired
         };
 
         _trace.WriteLine("Updating Custom API request parameter '{0}'", parameter.UniqueName);
-        _service.Update(record);
+        DataverseOrganizationRequests.UpdateWithSolution(_service, record, SolutionUniqueName);
     }
 
     private Guid CreateResponseProperty(Guid customApiId, CustomApiParameterModel property)
     {
+        string displayName = ResolveDisplayName(property.DisplayName, property.UniqueName);
         var record = new Entity(CustomAPIResponseProperty.EntityLogicalName)
         {
             ["customapiid"] = new EntityReference(CustomAPI.EntityLogicalName, customApiId),
             ["uniquename"] = property.UniqueName,
             ["name"] = property.UniqueName,
-            ["displayname"] = property.DisplayName,
-            ["description"] = property.Description,
+            ["displayname"] = displayName,
+            ["description"] = ResolveDescription(property.Description, displayName, property.UniqueName),
             ["type"] = new OptionSetValue((int)property.Type)
         };
 
@@ -373,34 +388,166 @@ public sealed class CustomApiRegistrationService
         }
 
         _trace.WriteLine("Creating Custom API response property '{0}'", property.UniqueName);
-        return _service.Create(record);
+        return DataverseOrganizationRequests.CreateWithSolution(_service, record, SolutionUniqueName);
     }
 
     private void UpdateResponseProperty(Guid propertyId, CustomApiParameterModel property)
     {
+        string displayName = ResolveDisplayName(property.DisplayName, property.UniqueName);
         var record = new Entity(CustomAPIResponseProperty.EntityLogicalName, propertyId)
         {
-            ["displayname"] = property.DisplayName,
-            ["description"] = property.Description
+            ["displayname"] = displayName,
+            ["description"] = ResolveDescription(property.Description, displayName, property.UniqueName)
         };
 
         _trace.WriteLine("Updating Custom API response property '{0}'", property.UniqueName);
-        _service.Update(record);
+        DataverseOrganizationRequests.UpdateWithSolution(_service, record, SolutionUniqueName);
     }
 
-    private void AddComponentToSolution(int componentType, Guid componentId, bool addRequiredComponents = false)
+    /// <summary>
+    /// Dataverse requires non-null description on Custom API creates. When the attribute omits
+    /// Description, fall back to DisplayName (then unique name).
+    /// </summary>
+    private static string ResolveDescription(string? description, string? displayName, string uniqueName)
+    {
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            return description;
+        }
+
+        return ResolveDisplayName(displayName, uniqueName);
+    }
+
+    private static string ResolveDisplayName(string? displayName, string uniqueName)
+        => string.IsNullOrWhiteSpace(displayName) ? uniqueName : displayName;
+
+    /// <summary>
+    /// Mirrors maker UI: select Custom API → Add to solution → include required components.
+    /// Uses the <c>customapi</c> table ObjectTypeCode (not classic picklist 372, which is Connector).
+    /// </summary>
+    private void AddCustomApiWithRequiredComponentsToSolution(Guid customApiId, string uniqueName)
     {
         if (string.IsNullOrWhiteSpace(SolutionUniqueName))
         {
             return;
         }
 
-        _trace.WriteLine("Adding Custom API component to solution '{0}'", SolutionUniqueName);
-        DataverseOrganizationRequests.AddSolutionComponent(
-            _service,
+        EnsureSolutionReady();
+        int customApiComponentType = _componentTypes.CustomApi;
+        _trace.WriteLine(
+            "Adding Custom API '{0}' ({1}) to solution '{2}' as component type {3} with required components",
+            uniqueName,
+            customApiId,
             SolutionUniqueName,
-            componentType,
-            componentId,
-            addRequiredComponents);
+            customApiComponentType);
+
+        try
+        {
+            DataverseOrganizationRequests.AddSolutionComponent(
+                _service,
+                SolutionUniqueName,
+                customApiComponentType,
+                customApiId,
+                addRequiredComponents: true);
+            return;
+        }
+        catch (Exception ex)
+        {
+            _trace.WriteLine(
+                "Warning: Add required components for Custom API '{0}' failed: {1}. Retrying parent only…",
+                uniqueName,
+                ex.Message);
+        }
+
+        try
+        {
+            DataverseOrganizationRequests.AddSolutionComponent(
+                _service,
+                SolutionUniqueName,
+                customApiComponentType,
+                customApiId,
+                addRequiredComponents: false);
+            _trace.WriteLine(
+                "Warning: Custom API '{0}' was added to solution '{1}' without required components. " +
+                "Add missing parameters/properties via solution explorer if needed.",
+                uniqueName,
+                SolutionUniqueName);
+        }
+        catch (Exception ex)
+        {
+            _trace.WriteLine(
+                "Warning: could not add Custom API '{0}' ({1}) to solution '{2}': {3}. " +
+                "The Custom API record was saved in the environment.",
+                uniqueName,
+                customApiId,
+                SolutionUniqueName,
+                ex.Message);
+        }
     }
+
+    /// <summary>
+    /// Applies the solution publisher customization prefix to Custom API and parameter unique names
+    /// when <see cref="SolutionUniqueName"/> is set. Skips double-prefixing if the name already
+    /// starts with <c>{prefix}_</c>.
+    /// </summary>
+    private CustomApiRegistrationModel ApplySolutionPublisherPrefix(CustomApiRegistrationModel model)
+    {
+        string? prefix = ResolveSolutionPublisherPrefix();
+        if (string.IsNullOrWhiteSpace(prefix))
+        {
+            return model;
+        }
+
+        string resolvedApiName = PluginPackageNameResolver.ResolveRegistrationName(model.UniqueName, prefix);
+        if (!string.Equals(resolvedApiName, model.UniqueName, StringComparison.Ordinal))
+        {
+            _trace.WriteLine(
+                "Custom API unique name '{0}' resolved with solution publisher prefix to '{1}'",
+                model.UniqueName,
+                resolvedApiName);
+        }
+
+        // Only the Custom API export key (uniquename) is prefixed. Request/response parameter
+        // unique names are the keys used in InputParameters/OutputParameters — leave them as
+        // authored so plugin code keeps working.
+        return new CustomApiRegistrationModel
+        {
+            UniqueName = resolvedApiName,
+            PluginTypeName = model.PluginTypeName,
+            DisplayName = model.DisplayName,
+            Description = model.Description,
+            BindingType = model.BindingType,
+            IsFunction = model.IsFunction,
+            IsPrivate = model.IsPrivate,
+            BoundEntityLogicalName = model.BoundEntityLogicalName,
+            AllowedCustomProcessingStepType = model.AllowedCustomProcessingStepType,
+            RequestParameters = model.RequestParameters,
+            ResponseProperties = model.ResponseProperties
+        };
+    }
+
+    private string? ResolveSolutionPublisherPrefix()
+    {
+        if (string.IsNullOrWhiteSpace(SolutionUniqueName))
+        {
+            return null;
+        }
+
+        EnsureSolutionReady();
+
+        if (!_publisherPrefixBySolution.TryGetValue(SolutionUniqueName, out string? prefix))
+        {
+            prefix = _queries.GetPublisherCustomizationPrefix(SolutionUniqueName);
+            _publisherPrefixBySolution[SolutionUniqueName] = prefix;
+            _trace.WriteLine(
+                "Using publisher customization prefix '{0}' from solution '{1}' for Custom API unique names",
+                prefix,
+                SolutionUniqueName);
+        }
+
+        return prefix;
+    }
+
+    private void EnsureSolutionReady()
+        => _solutionEnsure.EnsureExists(SolutionUniqueName);
 }

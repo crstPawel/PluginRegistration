@@ -29,7 +29,7 @@ Benefits:
     inlineScript: |
       cd $(Pipeline.Workspace)/plugins
       pluginreg whoami
-      pluginreg deploy --path . --profile dev
+      pluginreg deploy --path . --package-path bin/Release --solution $(pluginSolution)
   env:
     DATAVERSE_URL: $(DATAVERSE_URL)
 ```
@@ -50,7 +50,7 @@ Uses `AZURE_CLIENT_SECRET` or `AZURE_CLIENT_CERTIFICATE_PATH` depending on the c
         --resource "$DATAVERSE_URL" --query accessToken -o tsv)
       cd $(Pipeline.Workspace)/plugins
       pluginreg whoami
-      pluginreg deploy --path . --profile dev
+      pluginreg deploy --path . --package-path bin/Release --solution $(pluginSolution)
   env:
     DATAVERSE_URL: $(DATAVERSE_URL)
 ```
@@ -60,7 +60,7 @@ Uses `AZURE_CLIENT_SECRET` or `AZURE_CLIENT_CERTIFICATE_PATH` depending on the c
 ```yaml
 - script: |
     cd $(Pipeline.Workspace)/plugins
-    pluginreg deploy --path . --profile dev
+    pluginreg deploy --path . --package-path bin/Release --solution $(pluginSolution)
   displayName: Register plugins
   env:
     DATAVERSE_URL: $(DATAVERSE_URL)

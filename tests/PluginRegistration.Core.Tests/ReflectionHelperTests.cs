@@ -31,11 +31,10 @@ public sealed class ReflectionHelperTests
 
         var pluginTypes = ReflectionHelper.GetPluginTypes(assembly).OrderBy(t => t.FullName).ToList();
 
-        // We expect exactly the four plugin/custom-api classes (none of the base)
+        // Concrete IPlugin types in samples (not PluginBase / helpers)
         var expected = new[]
         {
             "Sample.Plugins.AccountCreatePlugin",
-            "Sample.Plugins.AccountLifecycleCustomApi",
             "Sample.Plugins.AccountLifecyclePlugin",
             "Sample.Plugins.MultiCustomApiPlugin",
             "Sample.Plugins.ProcessAccountCustomApiPlugin"

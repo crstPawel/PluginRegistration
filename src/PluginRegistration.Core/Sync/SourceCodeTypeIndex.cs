@@ -8,8 +8,9 @@ namespace PluginRegistration.Core.Sync;
 public sealed class SourceCodeTypeIndex
 {
     private static readonly Regex NamespaceRegex = new(@"namespace\s+(?<ns>[\w.]+)", RegexOptions.Compiled);
+    // Captures first base/interface only for chain walking; abstract classes are inheritance roots, not deployable plugins.
     private static readonly Regex ClassDeclarationRegex = new(
-        @"public\s+(?:sealed\s+|abstract\s+)*class\s+(?<class>\w+)(?:\s*:\s*(?<base>[\w]+))?",
+        @"public\s+(?:(?<modifiers>(?:sealed|abstract)\s+)+)?class\s+(?<class>\w+)(?:\s*:\s*(?<base>[\w]+))?",
         RegexOptions.Compiled);
 
     private static readonly HashSet<string> PluginRootBases = new(StringComparer.Ordinal)
@@ -63,8 +64,10 @@ public sealed class SourceCodeTypeIndex
                 var className = match.Groups["class"].Value;
                 var fullName = string.IsNullOrEmpty(namespaceName) ? className : $"{namespaceName}.{className}";
                 var baseName = match.Groups["base"].Success ? match.Groups["base"].Value : null;
+                var isAbstract = match.Groups["modifiers"].Success
+                    && match.Groups["modifiers"].Value.Contains("abstract", StringComparison.Ordinal);
 
-                _types[fullName] = new TypeInfo(file, className, namespaceName, baseName, match.Value);
+                _types[fullName] = new TypeInfo(file, className, namespaceName, baseName, match.Value, isAbstract);
             }
         }
     }
@@ -86,6 +89,13 @@ public sealed class SourceCodeTypeIndex
 
     private bool IsPluginType(string fullName)
     {
+        // Abstract bases (e.g. PluginBase : IPlugin) participate in inheritance resolution
+        // but are not themselves decorated/deployed as plugin types.
+        if (_types.TryGetValue(fullName, out var rootInfo) && rootInfo.IsAbstract)
+        {
+            return false;
+        }
+
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var current = fullName;
 
@@ -194,7 +204,13 @@ public sealed class SourceCodeTypeIndex
                 && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
     }
 
-    private sealed class TypeInfo(string file, string className, string namespaceName, string? baseName, string declaration)
+    private sealed class TypeInfo(
+        string file,
+        string className,
+        string namespaceName,
+        string? baseName,
+        string declaration,
+        bool isAbstract)
     {
         public string FilePath { get; } = file;
         public string ClassName { get; } = className;
@@ -202,5 +218,6 @@ public sealed class SourceCodeTypeIndex
         public string FullName => string.IsNullOrEmpty(NamespaceName) ? ClassName : $"{NamespaceName}.{ClassName}";
         public string? BaseName { get; } = baseName;
         public string Declaration { get; } = declaration;
+        public bool IsAbstract { get; } = isAbstract;
     }
 }

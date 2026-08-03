@@ -14,10 +14,9 @@ namespace PluginRegistration.Core.Model.OptionSets
 	// (ComponentState, all CustomAPI_* , most SdkMessage* detailed/internal enums, etc.).
 	// Early bound will NOT be re-generated.
 	//
-	// Registration summary:
-	//   - Assembly mode (.dll):  pluginassembly.content = base64(DLL), sourcetype=0
-	//   - Package mode (.nupkg): pluginpackage.content = base64(full .nupkg)
-	//     Dataverse then creates linked pluginassembly records (packageid + sourcetype ~4).
+	// Registration summary (package-only deploy):
+	//   - pluginpackage.content = base64(full .nupkg)
+	//   - Dataverse creates linked pluginassembly records (packageid + sourcetype ~4).
 	//
 	// We rely primarily on packageid for distinguishing, not these enums.
 	// Only minimal enums kept for reference.

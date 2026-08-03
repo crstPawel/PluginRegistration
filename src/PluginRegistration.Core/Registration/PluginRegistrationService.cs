@@ -3,7 +3,6 @@ using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using PluginRegistration.Core.Connection;
 using PluginRegistration.Attributes;
-using PluginRegistration.Core.Config;
 using PluginRegistration.Core.Model.Entities;
 
 namespace PluginRegistration.Core.Registration;
@@ -15,52 +14,18 @@ public sealed class PluginRegistrationService
     private readonly IOrganizationService _service;
     private readonly DataverseQueries _queries;
     private readonly ITrace _trace;
-    private readonly EnvironmentConfigurationResolver _environmentResolver;
+    private readonly SolutionEnsureService _solutionEnsure;
+    private readonly Dictionary<string, string> _publisherPrefixBySolution = new(StringComparer.OrdinalIgnoreCase);
 
-    public PluginRegistrationService(
-        IOrganizationService service,
-        ITrace trace,
-        PluginRegistrationConfig config)
+    public PluginRegistrationService(IOrganizationService service, ITrace trace)
     {
         _service = service;
         _queries = new DataverseQueries(service);
         _trace = trace;
-        _environmentResolver = new EnvironmentConfigurationResolver(config.StepOverrides, config.CustomApis);
+        _solutionEnsure = new SolutionEnsureService(service, trace);
     }
 
     public string? SolutionUniqueName { get; set; }
-
-    public void RegisterPlugins(string assemblyPath, bool excludePluginSteps = false)
-    {
-        var file = new FileInfo(assemblyPath);
-        if (file.Name.StartsWith("System.", StringComparison.Ordinal) || ReflectionHelper.ShouldIgnoreAssembly(file.Name))
-        {
-            return;
-        }
-
-        using var context = ReflectionHelper.CreateLoadContext(file.DirectoryName!);
-        var assembly = ReflectionHelper.LoadAssembly(context, file.FullName);
-        if (assembly is null)
-        {
-            return;
-        }
-
-        var pluginTypes = ReflectionHelper.GetPluginTypes(assembly).ToList();
-        if (pluginTypes.Count == 0)
-        {
-            return;
-        }
-
-        _trace.WriteLine("Checking assembly '{0}' - found {1} plugin(s)", file.Name, pluginTypes.Count);
-
-        var pluginAssemblyId = RegisterAssembly(file, assembly, pluginTypes);
-        if (pluginAssemblyId is null || excludePluginSteps)
-        {
-            return;
-        }
-
-        RegisterPluginSteps(pluginTypes, pluginAssemblyId.Value);
-    }
 
     public void RegisterPluginPackage(string packagePath, bool excludePluginSteps = false)
     {
@@ -70,14 +35,45 @@ public sealed class PluginRegistrationService
             throw new PluginRegistrationException($"Plugin package not found: {packagePath}");
         }
 
-        string packageId = NuGetPackageReader.GetPackageId(file.FullName);
-        _trace.WriteLine("Deploying plugin package '{0}' ({1})", packageId, file.Name);
+        (string packageId, string packageVersion) = NuGetPackageReader.GetPackageMetadata(file.FullName);
+        string registrationName = ResolvePluginPackageRegistrationName(packageId);
+        if (!string.Equals(registrationName, packageId, StringComparison.Ordinal))
+        {
+            _trace.WriteLine(
+                "Deploying plugin package '{0}' v{1} as '{2}' ({3})",
+                packageId,
+                packageVersion,
+                registrationName,
+                file.Name);
+        }
+        else
+        {
+            _trace.WriteLine("Deploying plugin package '{0}' v{1} ({2})", packageId, packageVersion, file.Name);
+        }
 
-        Guid packageEntityId = UpsertPluginPackage(packageId, file.FullName);
         string tempDirectory = NuGetPackageReader.ExtractToTempDirectory(file.FullName);
 
         try
         {
+            // Discover types from the new package before upload. Dataverse removes plugintypes that
+            // disappear from package content during update; that fails if steps/Custom APIs still
+            // reference those types — so clear those dependencies first.
+            Dictionary<string, HashSet<string>> expectedTypesByAssembly =
+                DiscoverExpectedPluginTypesByAssembly(tempDirectory);
+
+            Entity? existingPackage = FindExistingPluginPackage(registrationName, packageId);
+            if (existingPackage is not null)
+            {
+                RemoveDependenciesForTypesLeavingPackage(existingPackage.Id, expectedTypesByAssembly);
+            }
+
+            Guid packageEntityId = UpsertPluginPackage(
+                packageId,
+                registrationName,
+                packageVersion,
+                file.FullName,
+                existingPackage);
+
             foreach (string assemblyPath in NuGetPackageReader.GetPluginAssemblyPaths(tempDirectory))
             {
                 using MetadataLoadContext context = ReflectionHelper.CreateLoadContext(Path.GetDirectoryName(assemblyPath)!);
@@ -88,31 +84,52 @@ public sealed class PluginRegistrationService
                 }
 
                 List<Type> pluginTypes = ReflectionHelper.GetPluginTypes(assembly).ToList();
-                if (pluginTypes.Count == 0)
-                {
-                    continue;
-                }
-
                 string assemblyName = assembly.GetName().Name!;
                 _trace.WriteLine("Checking package assembly '{0}' - found {1} plugin(s)", assemblyName, pluginTypes.Count);
 
                 Guid? pluginAssemblyId = ResolvePackageAssemblyId(packageEntityId, assemblyName);
                 if (pluginAssemblyId is null)
                 {
-                    _trace.WriteLine(
-                        "Warning: Assembly '{0}' was not found in package '{1}' after upload. Skipping step registration.",
-                        assemblyName,
-                        packageId);
+                    if (pluginTypes.Count > 0)
+                    {
+                        _trace.WriteLine(
+                            "Warning: Assembly '{0}' was not found in package '{1}' after upload. Skipping step registration.",
+                            assemblyName,
+                            packageId);
+                    }
+
                     continue;
                 }
 
-                if (excludePluginSteps)
+                // Package-managed assemblies: Dataverse creates plugintype rows from package content.
+                // Creating plugintype client-side produces rows that fail step validation with
+                // "PluginType not found in PluginAssembly ... total of [0] plugin/workflow activity types".
+                var expectedTypeNames = pluginTypes
+                    .Select(type => type.FullName!)
+                    .ToList();
+                WaitForPackagePluginTypes(
+                    pluginAssemblyId.Value,
+                    assemblyName,
+                    expectedTypeNames);
+
+                // Safety net: remove any plugintypes still present but no longer in the package.
+                RemoveOrphanedPluginTypes(pluginTypes, pluginAssemblyId.Value, false);
+
+                if (excludePluginSteps || pluginTypes.Count == 0)
                 {
                     continue;
                 }
 
-                RemoveOrphanedPluginTypes(pluginTypes, pluginAssemblyId.Value, false);
-                RegisterPluginSteps(pluginTypes, pluginAssemblyId.Value);
+                // Re-query after orphan cleanup so registration uses current server state.
+                Dictionary<string, Entity> serverTypes = _queries
+                    .GetPluginTypes(pluginAssemblyId.Value, isWorkflowActivity: false)
+                    .Where(record => !string.IsNullOrWhiteSpace(record.GetAttributeValue<string>("typename")))
+                    .ToDictionary(
+                        record => record.GetAttributeValue<string>("typename")!,
+                        record => record,
+                        StringComparer.OrdinalIgnoreCase);
+
+                RegisterPluginStepsFromPackage(pluginTypes, serverTypes);
             }
         }
         finally
@@ -128,96 +145,121 @@ public sealed class PluginRegistrationService
         }
     }
 
-    private Guid? RegisterAssembly(
-        FileInfo assemblyFile,
-        Assembly assembly,
-        IEnumerable<Type> pluginTypes,
-        bool isWorkflowActivity = false)
+    /// <summary>
+    /// Maps assembly simple name → full plugin type names present in the package.
+    /// </summary>
+    private static Dictionary<string, HashSet<string>> DiscoverExpectedPluginTypesByAssembly(string tempDirectory)
     {
-        // === ASSEMBLY REGISTRATION (direct .dll) ===
-        // 1. The .DLL file bytes are read and base64-encoded.
-        // 2. Uploaded directly into pluginassembly.content (sourcetype=0 Database).
-        // 3. Dataverse stores the assembly content in the pluginassembly record.
-        // 4. Then plugintype + steps/customapis are registered against it.
-        var hasPluginSteps = pluginTypes.Any(type => ReflectionHelper.GetRegistrationAttributes(type).Any());
-        var hasCustomApis = pluginTypes.Any(type => ReflectionHelper.GetCustomApiRegistrationAttributes(type).Any());
+        Dictionary<string, HashSet<string>> result = new(StringComparer.OrdinalIgnoreCase);
 
-        if (!hasPluginSteps && !hasCustomApis)
+        foreach (string assemblyPath in NuGetPackageReader.GetPluginAssemblyPaths(tempDirectory))
         {
-            return null;
+            using MetadataLoadContext context = ReflectionHelper.CreateLoadContext(Path.GetDirectoryName(assemblyPath)!);
+            Assembly? assembly = ReflectionHelper.LoadAssembly(context, assemblyPath);
+            if (assembly is null)
+            {
+                continue;
+            }
+
+            string assemblyName = assembly.GetName().Name!;
+            HashSet<string> typeNames = ReflectionHelper.GetPluginTypes(assembly)
+                .Select(type => type.FullName!)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            result[assemblyName] = typeNames;
         }
 
-        var firstAttribute = hasPluginSteps
-            ? pluginTypes
-                .SelectMany(ReflectionHelper.GetRegistrationAttributes)
-                .Select(AttributeParser.Parse)
-                .FirstOrDefault()
-            : null;
-
-        var assemblyName = assembly.GetName();
-        var existing = _queries.GetPluginAssemblyByName(assemblyName.Name!);
-        if (existing?.GetAttributeValue<EntityReference>(PluginAssembly.Fields.PackageId) is not null)
-        {
-            throw new PluginRegistrationException(
-                $"Assembly '{assemblyName.Name}' is managed by a plugin package. " +
-                $"Deploy the .nupkg file instead of updating the assembly directly.");
-        }
-
-        var content = Convert.ToBase64String(File.ReadAllBytes(assemblyFile.FullName));
-
-        var record = existing ?? new Entity(PluginAssembly.EntityLogicalName);
-        record["content"] = content;
-        record["name"] = assemblyName.Name;
-        record["culture"] = assemblyName.CultureName ?? "neutral";
-        record["version"] = assemblyName.Version?.ToString() ?? "1.0.0.0";
-        record["publickeytoken"] = BitConverter.ToString(assemblyName.GetPublicKeyToken() ?? []).Replace("-", string.Empty).ToLowerInvariant();
-        record["sourcetype"] = new OptionSetValue(0);
-
-        // Determine isolation mode:
-        // - Prefer explicit value from [PluginRegistration(IsolationMode = ...)] on a plugin class
-        // - If updating existing assembly, preserve its current isolation mode (don't flip full-trust <-> sandbox unexpectedly)
-        // - Default to Sandbox (2) for new assemblies (full-trust "None"=1 is often disallowed)
-        int isolationModeValue;
-        if (firstAttribute != null)
-        {
-            isolationModeValue = (int)firstAttribute.IsolationMode;
-        }
-        else if (existing != null)
-        {
-            var existingIsolation = existing.GetAttributeValue<OptionSetValue>(PluginAssembly.Fields.IsolationMode);
-            isolationModeValue = existingIsolation?.Value ?? (int)IsolationModeEnum.Sandbox;
-        }
-        else
-        {
-            isolationModeValue = (int)IsolationModeEnum.Sandbox;
-        }
-
-        record["isolationmode"] = new OptionSetValue(isolationModeValue);
-
-        Guid assemblyId;
-        if (existing is null)
-        {
-            _trace.WriteLine("Registering plugin assembly '{0}'", assemblyName.Name);
-            assemblyId = _service.Create(record);
-        }
-        else
-        {
-            _trace.WriteLine("Updating plugin assembly '{0}'", assemblyName.Name);
-            record.Id = existing.Id;
-            _service.Update(record);
-            assemblyId = existing.Id;
-            RemoveOrphanedPluginTypes(pluginTypes, assemblyId, isWorkflowActivity);
-        }
-
-        if (!string.IsNullOrWhiteSpace(SolutionUniqueName))
-        {
-            AddComponentToSolution(SolutionUniqueName, 91, assemblyId, addRequiredComponents: true);
-        }
-
-        return assemblyId;
+        return result;
     }
 
-    private Guid UpsertPluginPackage(string packageId, string packagePath)
+    private Entity? FindExistingPluginPackage(string registrationName, string packageId)
+    {
+        Entity? existing = _queries.GetPluginPackageByName(registrationName);
+        if (existing is not null
+            || string.Equals(registrationName, packageId, StringComparison.OrdinalIgnoreCase))
+        {
+            return existing;
+        }
+
+        existing = _queries.GetPluginPackageByName(packageId);
+        if (existing is not null)
+        {
+            _trace.WriteLine(
+                "Found existing plugin package under NuGet id '{0}' (expected '{1}'). Updating content only — name cannot be changed after create.",
+                packageId,
+                registrationName);
+        }
+
+        return existing;
+    }
+
+    /// <summary>
+    /// Before package content update, delete steps/images/secure config/Custom APIs for plugintypes
+    /// that will no longer exist in the package. Dataverse deletes those plugintypes during update
+    /// and fails with "Unable to delete … plugintype due to N step(s) registered on it" otherwise.
+    /// </summary>
+    private void RemoveDependenciesForTypesLeavingPackage(
+        Guid packageEntityId,
+        IReadOnlyDictionary<string, HashSet<string>> expectedTypesByAssembly)
+    {
+        foreach (Entity assembly in _queries.GetPluginAssembliesForPackage(packageEntityId))
+        {
+            string? assemblyName = assembly.GetAttributeValue<string>(PluginAssembly.Fields.Name);
+            if (string.IsNullOrWhiteSpace(assemblyName))
+            {
+                continue;
+            }
+
+            expectedTypesByAssembly.TryGetValue(assemblyName, out HashSet<string>? expectedTypes);
+            expectedTypes ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (Entity existingType in _queries.GetPluginTypes(assembly.Id, isWorkflowActivity: false))
+            {
+                string? typeName = existingType.GetAttributeValue<string>(PluginType.Fields.TypeName);
+                if (string.IsNullOrWhiteSpace(typeName) || expectedTypes.Contains(typeName))
+                {
+                    continue;
+                }
+
+                _trace.WriteLine(
+                    "Plugin type '{0}' is leaving package assembly '{1}' — removing steps and related registrations before package update",
+                    typeName,
+                    assemblyName);
+                DeletePluginTypeDependencies(existingType.Id, typeName);
+            }
+        }
+    }
+
+    /// <summary>
+    /// When a solution is selected for deploy, builds the Dataverse package name as
+    /// <c>{publisherPrefix}_{nugetPackageId}</c> from that solution's publisher.
+    /// </summary>
+    private string ResolvePluginPackageRegistrationName(string packageId)
+    {
+        if (string.IsNullOrWhiteSpace(SolutionUniqueName))
+        {
+            return packageId;
+        }
+
+        // Solution must exist first so its publisher (and customization prefix) can be resolved.
+        EnsureSolutionExists();
+
+        if (!_publisherPrefixBySolution.TryGetValue(SolutionUniqueName, out string? prefix))
+        {
+            prefix = _queries.GetPublisherCustomizationPrefix(SolutionUniqueName);
+            _publisherPrefixBySolution[SolutionUniqueName] = prefix;
+        }
+
+        return PluginPackageNameResolver.ResolveRegistrationName(packageId, prefix);
+    }
+
+    private Guid UpsertPluginPackage(
+        string packageId,
+        string registrationName,
+        string packageVersion,
+        string packagePath,
+        Entity? existing)
     {
         // === PACKAGE REGISTRATION (.nupkg) ===
         // 1. The ENTIRE .NUPKG file (not individual DLLs) is read and base64-encoded.
@@ -229,22 +271,35 @@ public sealed class PluginRegistrationService
         // 4. Client then locally extracts the nupkg (see NuGetPackageReader) only to discover
         //    plugin types via reflection for step registration.
         // 5. Steps are registered against the server-created assemblies (resolved by packageid).
+        //
+        // Registration name: when plugins[].solution is set, name/uniquename become
+        // {publisherCustomizationPrefix}_{NuGetPackageId} (e.g. contoso_Sample.Plugins).
+        // version is required on create (from nuspec); name/version are immutable after create.
+        //
+        // Before content update, callers must remove steps/Custom APIs for plugintypes leaving
+        // the package — Dataverse deletes those types during update and fails if steps remain.
         string content = Convert.ToBase64String(File.ReadAllBytes(packagePath));
-        Entity? existing = _queries.GetPluginPackageByName(packageId);
+
+        EnsureSolutionExists();
 
         if (existing is null)
         {
-            _trace.WriteLine("Registering plugin package '{0}'", packageId);
+            _trace.WriteLine("Registering plugin package '{0}' v{1}", registrationName, packageVersion);
             Entity record = new Entity(PluginPackage.EntityLogicalName)
             {
-                ["name"] = packageId,
+                ["name"] = registrationName,
+                ["uniquename"] = registrationName,
+                ["version"] = packageVersion,
                 ["content"] = content
             };
 
             return DataverseOrganizationRequests.CreateWithSolution(_service, record, SolutionUniqueName);
         }
 
-        _trace.WriteLine("Updating plugin package '{0}'", packageId);
+        string existingName = existing.GetAttributeValue<string>(PluginPackage.Fields.Name)
+            ?? existing.GetAttributeValue<string>(PluginPackage.Fields.UniqueName)
+            ?? registrationName;
+        _trace.WriteLine("Updating plugin package '{0}'", existingName);
         Entity update = new Entity(PluginPackage.EntityLogicalName, existing.Id)
         {
             ["content"] = content
@@ -261,7 +316,7 @@ public sealed class PluginRegistrationService
                 .FirstOrDefault(record => String.Equals(
                     record.GetAttributeValue<string>("name"),
                     assemblyName,
-                    StringComparison.Ordinal));
+                    StringComparison.OrdinalIgnoreCase));
 
             if (assembly is not null)
             {
@@ -277,37 +332,190 @@ public sealed class PluginRegistrationService
         return null;
     }
 
+    /// <summary>
+    /// Waits until Dataverse has registered plugintypes from the uploaded package content.
+    /// Package assemblies must not receive client-created plugintype rows.
+    /// </summary>
+    private Dictionary<string, Entity> WaitForPackagePluginTypes(
+        Guid assemblyId,
+        string assemblyName,
+        IReadOnlyCollection<string> expectedTypeNames)
+    {
+        const int maxAttempts = 15;
+        const int delaySeconds = 2;
+
+        Dictionary<string, Entity> latest = new(StringComparer.OrdinalIgnoreCase);
+
+        // Empty expected set: package has no IPlugin types for this assembly (all removed).
+        // Do not wait for types that will never appear.
+        if (expectedTypeNames.Count == 0)
+        {
+            latest = _queries.GetPluginTypes(assemblyId, isWorkflowActivity: false)
+                .Where(record => !string.IsNullOrWhiteSpace(record.GetAttributeValue<string>("typename")))
+                .ToDictionary(
+                    record => record.GetAttributeValue<string>("typename")!,
+                    record => record,
+                    StringComparer.OrdinalIgnoreCase);
+            _trace.WriteLine(
+                "Package assembly '{0}' has no expected plugin types ({1} still on server)",
+                assemblyName,
+                latest.Count);
+            return latest;
+        }
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            latest = _queries.GetPluginTypes(assemblyId, isWorkflowActivity: false)
+                .Where(record => !string.IsNullOrWhiteSpace(record.GetAttributeValue<string>("typename")))
+                .ToDictionary(
+                    record => record.GetAttributeValue<string>("typename")!,
+                    record => record,
+                    StringComparer.OrdinalIgnoreCase);
+
+            int matched = expectedTypeNames.Count(name => latest.ContainsKey(name));
+            if (matched == expectedTypeNames.Count)
+            {
+                _trace.WriteLine(
+                    "Package assembly '{0}' has {1} plugin type(s) ready",
+                    assemblyName,
+                    latest.Count);
+                return latest;
+            }
+
+            if (attempt < maxAttempts)
+            {
+                _trace.WriteLine(
+                    "Waiting for Dataverse plugin types on assembly '{0}' ({1}/{2} expected, attempt {3}/{4})...",
+                    assemblyName,
+                    matched,
+                    expectedTypeNames.Count,
+                    attempt,
+                    maxAttempts);
+                Thread.Sleep(TimeSpan.FromSeconds(delaySeconds));
+            }
+        }
+
+        string expected = string.Join(
+            ", ",
+            expectedTypeNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase));
+        string found = latest.Count == 0
+            ? "<none>"
+            : string.Join(", ", latest.Keys.OrderBy(name => name, StringComparer.OrdinalIgnoreCase));
+
+        throw new PluginRegistrationException(
+            $"Plugin assembly '{assemblyName}' did not expose expected plugintypes after package upload " +
+            $"(expected: {expected}; found on server: {found}). " +
+            "For plugin packages, Dataverse registers plugintypes from .nupkg content. " +
+            "Verify the package includes the plugin DLL under lib/, types implement IPlugin, " +
+            "and the project targets a supported .NET Framework (e.g. net462).");
+    }
+
     private void RemoveOrphanedPluginTypes(IEnumerable<Type> pluginTypes, Guid assemblyId, bool isWorkflowActivity)
     {
-        var typeNames = pluginTypes.Select(t => t.FullName).ToHashSet(StringComparer.Ordinal);
-        var existingTypes = _queries.GetPluginTypes(assemblyId, isWorkflowActivity);
+        HashSet<string?> typeNames = pluginTypes.Select(t => t.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        List<Entity> existingTypes = _queries.GetPluginTypes(assemblyId, isWorkflowActivity);
 
-        foreach (var existingType in existingTypes)
+        foreach (Entity existingType in existingTypes)
         {
-            var typeName = existingType.GetAttributeValue<string>("typename");
+            string? typeName = existingType.GetAttributeValue<string>(PluginType.Fields.TypeName);
             if (typeNames.Contains(typeName))
             {
                 continue;
             }
 
             _trace.WriteLine("Removing orphaned plugin type '{0}'", typeName);
-            foreach (var step in _queries.GetPluginSteps(existingType.Id))
-            {
-                _trace.WriteLine("Deleting step '{0}'", step.GetAttributeValue<string>("name"));
-                _service.Delete(SdkMessageProcessingStep.EntityLogicalName, step.Id);
-            }
-
+            DeletePluginTypeDependencies(existingType.Id, typeName);
             _service.Delete(PluginType.EntityLogicalName, existingType.Id);
         }
     }
 
-    private void RegisterPluginSteps(IEnumerable<Type> pluginTypes, Guid assemblyId)
+    /// <summary>
+    /// Deletes Custom APIs, steps (with images and secure config) registered against a plugintype.
+    /// Does not delete the plugintype itself.
+    /// </summary>
+    private void DeletePluginTypeDependencies(Guid pluginTypeId, string? typeName)
     {
-        var existingTypes = _queries.GetPluginTypes(assemblyId).ToDictionary(
-            t => t.GetAttributeValue<string>("typename")!,
-            t => t,
-            StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(typeName))
+        {
+            foreach (CustomApiDetails customApi in _queries.GetCustomApisForPluginType(typeName))
+            {
+                DeleteCustomApiTree(customApi);
+            }
+        }
 
+        foreach (Entity step in _queries.GetPluginSteps(pluginTypeId))
+        {
+            DeleteStepCompletely(step);
+        }
+    }
+
+    private void DeleteCustomApiTree(CustomApiDetails customApi)
+    {
+        string uniqueName = customApi.Api.GetAttributeValue<string>(CustomAPI.Fields.UniqueName)
+            ?? customApi.Api.Id.ToString();
+
+        foreach (Entity parameter in customApi.RequestParameters)
+        {
+            _trace.WriteLine(
+                "Deleting Custom API request parameter '{0}'",
+                parameter.GetAttributeValue<string>("uniquename"));
+            _service.Delete(CustomAPIRequestParameter.EntityLogicalName, parameter.Id);
+        }
+
+        foreach (Entity property in customApi.ResponseProperties)
+        {
+            _trace.WriteLine(
+                "Deleting Custom API response property '{0}'",
+                property.GetAttributeValue<string>("uniquename"));
+            _service.Delete(CustomAPIResponseProperty.EntityLogicalName, property.Id);
+        }
+
+        _trace.WriteLine("Deleting Custom API '{0}'", uniqueName);
+        _service.Delete(CustomAPI.EntityLogicalName, customApi.Api.Id);
+    }
+
+    private void DeleteStepCompletely(Entity step)
+    {
+        string? stepName = step.GetAttributeValue<string>(SdkMessageProcessingStep.Fields.Name);
+        _trace.WriteLine("Deleting step '{0}'", stepName);
+
+        foreach (Entity image in _queries.GetPluginStepImages(step.Id))
+        {
+            _trace.WriteLine(
+                "Deleting image '{0}' for step '{1}'",
+                image.GetAttributeValue<string>(SdkMessageProcessingStepImage.Fields.Name),
+                stepName);
+            _service.Delete(SdkMessageProcessingStepImage.EntityLogicalName, image.Id);
+        }
+
+        // Secure config is linked from the step; clear the lookup then delete the config row.
+        Entity stepWithSecure = _service.Retrieve(
+            SdkMessageProcessingStep.EntityLogicalName,
+            step.Id,
+            new ColumnSet(SdkMessageProcessingStep.Fields.SdkMessageProcessingStepSecureConfigId));
+        EntityReference? secureRef = stepWithSecure.GetAttributeValue<EntityReference>(
+            SdkMessageProcessingStep.Fields.SdkMessageProcessingStepSecureConfigId);
+        if (secureRef is not null)
+        {
+            Entity clearLink = new Entity(SdkMessageProcessingStep.EntityLogicalName, step.Id)
+            {
+                [SdkMessageProcessingStep.Fields.SdkMessageProcessingStepSecureConfigId] = null
+            };
+            _service.Update(clearLink);
+            _service.Delete(SdkMessageProcessingStepSecureConfig.EntityLogicalName, secureRef.Id);
+        }
+
+        _service.Delete(SdkMessageProcessingStep.EntityLogicalName, step.Id);
+    }
+
+    /// <summary>
+    /// Registers steps/Custom APIs against plugintypes that Dataverse created from the package.
+    /// Does not create or update <c>plugintype</c> rows.
+    /// </summary>
+    private void RegisterPluginStepsFromPackage(
+        IEnumerable<Type> pluginTypes,
+        Dictionary<string, Entity> serverTypes)
+    {
         foreach (var pluginType in pluginTypes)
         {
             var attributeData = ReflectionHelper.GetRegistrationAttributes(pluginType).ToList();
@@ -318,7 +526,15 @@ public sealed class PluginRegistrationService
                 continue;
             }
 
-            var pluginTypeId = UpsertPluginType(pluginType, assemblyId, existingTypes);
+            if (!serverTypes.TryGetValue(pluginType.FullName!, out Entity? serverType))
+            {
+                throw new PluginRegistrationException(
+                    $"Plugin type '{pluginType.FullName}' was not registered by Dataverse from the package. " +
+                    "Ensure the type implements IPlugin and is included in the uploaded .nupkg.");
+            }
+
+            Guid pluginTypeId = serverType.Id;
+            _trace.WriteLine("Using package plugin type '{0}'", pluginType.FullName);
             var existingSteps = _queries.GetPluginSteps(pluginTypeId);
 
             foreach (var data in attributeData)
@@ -329,9 +545,7 @@ public sealed class PluginRegistrationService
                     continue;
                 }
 
-                var stepAttribute = PluginStepNameResolver.ApplyStepName(
-                    pluginType,
-                    _environmentResolver.ApplyStepOverrides(attribute));
+                var stepAttribute = PluginStepNameResolver.ApplyStepName(pluginType, attribute);
                 RegisterStep(pluginType, pluginTypeId, existingSteps, stepAttribute);
             }
 
@@ -353,39 +567,9 @@ public sealed class PluginRegistrationService
         }
     }
 
-    private Guid UpsertPluginType(Type pluginType, Guid assemblyId, Dictionary<string, Entity> existingTypes)
-    {
-        if (existingTypes.TryGetValue(pluginType.FullName!, out var existing))
-        {
-            var update = new Entity(PluginType.EntityLogicalName, existing.Id)
-            {
-                ["name"] = pluginType.FullName,
-                ["typename"] = pluginType.FullName,
-                ["friendlyname"] = pluginType.FullName,
-                ["pluginassemblyid"] = new EntityReference(PluginAssembly.EntityLogicalName, assemblyId)
-            };
-
-            _trace.WriteLine("Updating plugin type '{0}'", pluginType.FullName);
-            _service.Update(update);
-            return existing.Id;
-        }
-
-        var create = new Entity(PluginType.EntityLogicalName)
-        {
-            ["name"] = pluginType.FullName,
-            ["typename"] = pluginType.FullName,
-            ["friendlyname"] = pluginType.FullName,
-            ["pluginassemblyid"] = new EntityReference(PluginAssembly.EntityLogicalName, assemblyId)
-        };
-
-        _trace.WriteLine("Registering plugin type '{0}'", pluginType.FullName);
-        return _service.Create(create);
-    }
-
     private void RegisterCustomApi(Type pluginType, Guid pluginTypeId, CustomApiRegistration attribute)
     {
-        var profileOverride = _environmentResolver.GetCustomApiOverride(attribute.UniqueName);
-        var model = CustomApiAttributeReader.Read(pluginType, attribute, profileOverride);
+        var model = CustomApiAttributeReader.Read(pluginType, attribute);
         var customApiService = new CustomApiRegistrationService(_service, _trace)
         {
             SolutionUniqueName = SolutionUniqueName
@@ -445,7 +629,6 @@ public sealed class PluginRegistrationService
         }
 
         record["name"] = pluginStep.Name;
-        record["configuration"] = pluginStep.UnSecureConfiguration;
         record["mode"] = new OptionSetValue(pluginStep.ExecutionMode == ExecutionModeEnum.Asynchronous ? 1 : 0);
         record["asyncautodelete"] = pluginStep.ExecutionMode == ExecutionModeEnum.Asynchronous && pluginStep.DeleteAsyncOperation;
         record["rank"] = pluginStep.ExecutionOrder;
@@ -479,53 +662,11 @@ public sealed class PluginRegistrationService
             existingSteps.Remove(step);
         }
 
-        RegisterSecureConfiguration(registeredStepId, pluginStep.SecureConfiguration);
         RegisterImages(registeredStepId, pluginType, pluginStep);
 
         if (!string.IsNullOrWhiteSpace(SolutionUniqueName))
         {
             AddComponentToSolution(SolutionUniqueName, 92, registeredStepId);
-        }
-    }
-
-    private void RegisterSecureConfiguration(Guid stepId, string? secureConfiguration)
-    {
-        var query = new QueryExpression(SdkMessageProcessingStepSecureConfig.EntityLogicalName)
-        {
-            ColumnSet = new ColumnSet(SdkMessageProcessingStepSecureConfig.Fields.SdkMessageProcessingStepSecureConfigId, "secureconfig"),
-            Criteria = new FilterExpression
-            {
-                Conditions =
-                {
-                    new ConditionExpression("sdkmessageprocessingstepid", ConditionOperator.Equal, stepId)
-                }
-            },
-            TopCount = 1
-        };
-
-        var existing = _service.RetrieveMultiple(query).Entities.FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(secureConfiguration))
-        {
-            if (existing is not null)
-            {
-                _service.Delete(SdkMessageProcessingStepSecureConfig.EntityLogicalName, existing.Id);
-            }
-
-            return;
-        }
-
-        var record = existing ?? new Entity(SdkMessageProcessingStepSecureConfig.EntityLogicalName);
-        record["secureconfig"] = secureConfiguration;
-        record["sdkmessageprocessingstepid"] = new EntityReference(SdkMessageProcessingStep.EntityLogicalName, stepId);
-
-        if (existing is null)
-        {
-            _service.Create(record);
-        }
-        else
-        {
-            record.Id = existing.Id;
-            _service.Update(record);
         }
     }
 
@@ -606,6 +747,7 @@ public sealed class PluginRegistrationService
 
     private void AddComponentToSolution(string solutionName, int componentType, Guid componentId, bool addRequiredComponents = false)
     {
+        EnsureSolutionExists();
         _trace.WriteLine("Adding component to solution '{0}'", solutionName);
         DataverseOrganizationRequests.AddSolutionComponent(
             _service,
@@ -614,4 +756,7 @@ public sealed class PluginRegistrationService
             componentId,
             addRequiredComponents);
     }
+
+    private void EnsureSolutionExists()
+        => _solutionEnsure.EnsureExists(SolutionUniqueName);
 }

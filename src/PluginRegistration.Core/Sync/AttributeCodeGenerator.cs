@@ -7,7 +7,7 @@ public static class AttributeCodeGenerator
 {
     public static string Generate(
         PluginRegistrationAttribute attribute,
-        string indentation = "    ",
+        string indentation = "\r\n    ",
         string? pluginTypeName = null)
     {
         return GeneratePluginStep(attribute, indentation, pluginTypeName);
@@ -15,25 +15,18 @@ public static class AttributeCodeGenerator
 
     private static string GeneratePluginStep(
         PluginRegistrationAttribute attribute,
-        string indentation,
+        string linePrefix,
         string? pluginTypeName)
     {
-        var extras = BuildNamedParameters(attribute, indentation, pluginTypeName);
+        var extras = BuildNamedParameters(attribute, pluginTypeName);
 
         var messagePart = TryFormatAsMessageTypeEnum(attribute.Message)
             ?? throw new PluginRegistrationException(
                 $"Cannot generate code for unknown message '{attribute.Message}'. Add it to MessageTypeEnum.");
 
-        return string.Format(
-            "{8}[PluginRegistration({8}{0}, {8}\"{1}\", StageEnum.{2}, ExecutionModeEnum.{3},{8}{4}, {5}{6}{8})]",
-            messagePart,
-            attribute.EntityLogicalName,
-            attribute.Stage,
-            attribute.ExecutionMode,
-            FilteringAttributesParser.FormatForCode(attribute.FilteringAttributes),
-            attribute.ExecutionOrder,
-            extras,
-            indentation);
+        // Single line: linePrefix is only the leading newline + class indentation.
+        return
+            $"{linePrefix}[PluginRegistration({messagePart}, \"{attribute.EntityLogicalName}\", StageEnum.{attribute.Stage}, ExecutionModeEnum.{attribute.ExecutionMode}, {FilteringAttributesParser.FormatForCode(attribute.FilteringAttributes)}, {attribute.ExecutionOrder}{extras})]";
     }
 
     private static string? TryFormatAsMessageTypeEnum(string? message)
@@ -50,7 +43,6 @@ public static class AttributeCodeGenerator
 
     private static string BuildNamedParameters(
         PluginRegistrationAttribute attribute,
-        string indentation,
         string? pluginTypeName = null)
     {
         var extras = string.Empty;
@@ -63,37 +55,27 @@ public static class AttributeCodeGenerator
                 PluginStepNameResolver.Resolve(pluginTypeName, attribute.Stage.Value),
                 StringComparison.Ordinal))
         {
-            extras += $"{indentation},Name = \"{attribute.Name}\"";
+            extras += $", Name = \"{attribute.Name}\"";
         }
 
         if (!attribute.Server)
         {
-            extras += $"{indentation},Server = {attribute.Server.ToString().ToLowerInvariant()}";
+            extras += $", Server = {attribute.Server.ToString().ToLowerInvariant()}";
         }
 
         if (!string.IsNullOrWhiteSpace(attribute.Id))
         {
-            extras += $"{indentation},Id = \"{attribute.Id}\"";
+            extras += $", Id = \"{attribute.Id}\"";
         }
 
         if (attribute.ExecutionMode == ExecutionModeEnum.Asynchronous && attribute.DeleteAsyncOperation)
         {
-            extras += $"{indentation},DeleteAsyncOperation = true";
-        }
-
-        if (!string.IsNullOrWhiteSpace(attribute.UnSecureConfiguration))
-        {
-            extras += $"{indentation},UnSecureConfiguration = @\"{attribute.UnSecureConfiguration.Replace("\"", "\"\"")}\"";
-        }
-
-        if (!string.IsNullOrWhiteSpace(attribute.SecureConfiguration))
-        {
-            extras += $"{indentation},SecureConfiguration = @\"{attribute.SecureConfiguration.Replace("\"", "\"\"")}\"";
+            extras += ", DeleteAsyncOperation = true";
         }
 
         if (attribute.Action is not null)
         {
-            extras += $"{indentation},Action = PluginStepOperationEnum.{attribute.Action}";
+            extras += $", Action = PluginStepOperationEnum.{attribute.Action}";
         }
 
         return extras;

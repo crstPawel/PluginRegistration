@@ -14,6 +14,11 @@ public static class DataverseOrganizationRequests
             (Guid)response["UserId"]);
     }
 
+    /// <summary>
+    /// Adds a component to a solution. Never sets <c>DoNotIncludeSubcomponents</c> —
+    /// that flag is only valid for Entity root components (type 1) and fails for steps (92),
+    /// Custom API (372), etc. with "DoNotIncludeSubcomponents can not be set to true on non Entity root".
+    /// </summary>
     public static void AddSolutionComponent(
         IOrganizationService service,
         string solutionUniqueName,

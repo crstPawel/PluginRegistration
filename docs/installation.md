@@ -4,7 +4,7 @@
 
 - .NET SDK **10.0** (see `global.json` in the repository root)
 - Access to a Dataverse environment (Service Principal or connection string)
-- Built plugin assembly (`.dll`) — required only for `deploy`, not for `sync`
+- Packed plugin package (`.nupkg`) — required only for `deploy`, not for `sync`
 
 The tool and plugin projects **can live in separate directories**. For `sync`, point to plugin source code with `--path`.
 
@@ -63,7 +63,7 @@ Then from any directory:
 
 ```bash
 pluginreg sync --path /path/to/MyPluginProject/src/MyPlugins
-pluginreg deploy --path . --profile dev
+pluginreg deploy --path . --package-path bin/Release --solution MySolution
 ```
 
 ---

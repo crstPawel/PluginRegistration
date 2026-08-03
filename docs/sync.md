@@ -19,16 +19,13 @@ Requirements:
 2. Types **already registered** in the connected Dataverse environment
 3. `namespace.class` in code must equal `plugintype.typename`
 
-`sync` does **not** require `pluginregistration.json`.
-
-After sync, optionally run `init` in the plugin project to scaffold deploy configuration.
+`sync` does **not** require any deploy config file.
 
 ---
 
 **Important:** `sync` is the **inverse of `deploy`** for attributes:
 
-- **does not upload** DLLs to Dataverse;
-- **does not create** or update `pluginregistration.json`;
+- **does not upload** packages to Dataverse;
 - **overwrites** `[PluginRegistration]`, `[CustomApiRegistration]`, `[PluginStepImage]`, `[CustomApiRequestParameter]`, and `[CustomApiResponseProperty]` in code based on the current environment state.
 
 Use it to update attributes in code from Dataverse.
@@ -73,7 +70,7 @@ pluginreg sync --path samples/Sample.Plugins
 | `--connection`, `-c` | Connection string; otherwise `DATAVERSE_*` variables |
 | `--class-regex` | Custom class detection regex (when inheritance analysis is insufficient) |
 
-**Note:** `--profile` is not used by `sync` — the operation reads the current state from the connected Dataverse environment.
+**Note:** `sync` only needs a Dataverse connection and `--path` to the plugin sources.
 
 ---
 
@@ -153,7 +150,7 @@ For each step, Dataverse fields are read and a `PluginRegistrationAttribute` is 
 | `mode` | `ExecutionModeEnum` |
 | `filteringattributes` | `FilteringAttributes` (`string[]`) |
 | `rank` | `ExecutionOrder` |
-| `configuration` | `UnSecureConfiguration` |
+
 | `asyncautodelete` | `DeleteAsyncOperation` |
 | `sdkmessageprocessingstepid` | `Id` |
 
@@ -258,11 +255,11 @@ public sealed class ProcessAccountCustomApiPlugin : IPlugin { ... }
 
 | Aspect | `sync` | `deploy` |
 |--------|--------|----------|
-| Data direction | Dataverse → code | code + DLL → Dataverse |
-| Requires DLL | no | yes |
-| Requires `pluginregistration.json` | no | yes |
+| Data direction | Dataverse → code | code + `.nupkg` → Dataverse |
+| Requires package | no | yes |
+| Requires CLI package/solution args | no | yes (`--package-path`, optional `--solution`) |
 | Modifies `.cs` | yes | no |
-| Profile `stepOverrides` | not applied | applied on deploy |
+
 | Removes old attributes in code | yes | — |
 
 Typical scenarios:
@@ -278,7 +275,7 @@ Typical scenarios:
 - **Overwrites attributes** — manual edits to registration attributes are lost on the next `sync`.
 - **Requires registered type** — the class must already exist as `plugintype` in Dataverse (after a prior `deploy` or manual registration).
 - **Full type name** — step matching uses `namespace.class`; changing namespace in code without updating Dataverse causes no match.
-- **Secure configuration** — `sync` does not recreate secure config in attributes (it stays in Dataverse; deploy manages a separate record).
+- **Step configuration** — unsecure/secure step configuration is not managed by this tool (not synced, not deployed).
 - **One environment at a time** — output depends on which Dataverse you are connected to.
 - **MessageTypeEnum only** — uncommon SDK messages must be added to `MessageTypeEnum` before they can be synced.
 

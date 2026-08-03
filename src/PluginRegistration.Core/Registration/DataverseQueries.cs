@@ -398,4 +398,92 @@ public sealed class DataverseQueries
         var assembly = _service.Retrieve(PluginAssembly.EntityLogicalName, assemblyRef.Id, new ColumnSet(PluginAssembly.Fields.IsolationMode));
         return assembly.GetAttributeValue<OptionSetValue>(PluginAssembly.Fields.IsolationMode);
     }
+
+    public Entity? GetSolutionByUniqueName(string uniqueName)
+    {
+        var query = new QueryExpression("solution")
+        {
+            ColumnSet = new ColumnSet("solutionid", "uniquename", "friendlyname", "version", "ismanaged", "publisherid"),
+            Criteria = new FilterExpression
+            {
+                Conditions =
+                {
+                    new ConditionExpression("uniquename", ConditionOperator.Equal, uniqueName)
+                }
+            },
+            TopCount = 1
+        };
+
+        return _service.RetrieveMultiple(query).Entities.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Resolves the publisher used by the system Default solution (always present in Dataverse).
+    /// Used when creating a new solution and no publisher is configured.
+    /// </summary>
+    public Guid GetDefaultPublisherId()
+    {
+        var query = new QueryExpression("solution")
+        {
+            ColumnSet = new ColumnSet("publisherid"),
+            Criteria = new FilterExpression
+            {
+                Conditions =
+                {
+                    new ConditionExpression("uniquename", ConditionOperator.Equal, "Default")
+                }
+            },
+            TopCount = 1
+        };
+
+        var defaultSolution = _service.RetrieveMultiple(query).Entities.FirstOrDefault();
+        var publisher = defaultSolution?.GetAttributeValue<EntityReference>("publisherid");
+        if (publisher is null)
+        {
+            throw new PluginRegistrationException(
+                "Could not resolve the default publisher from the Default solution. " +
+                "Create the solution manually or ensure a publisher exists on the environment.");
+        }
+
+        return publisher.Id;
+    }
+
+    /// <summary>
+    /// Returns the customization prefix of the publisher that owns the given solution
+    /// (e.g. <c>new</c>, <c>contoso</c>). Used to build <c>pluginpackage</c> unique names.
+    /// </summary>
+    public string GetPublisherCustomizationPrefix(string solutionUniqueName)
+    {
+        if (string.IsNullOrWhiteSpace(solutionUniqueName))
+        {
+            throw new ArgumentException("Solution unique name is required.", nameof(solutionUniqueName));
+        }
+
+        Entity solution = GetSolutionByUniqueName(solutionUniqueName)
+            ?? throw new PluginRegistrationException(
+                $"Solution '{solutionUniqueName}' was not found. " +
+                "Ensure the solution exists before resolving its publisher prefix.");
+
+        EntityReference? publisherRef = solution.GetAttributeValue<EntityReference>("publisherid");
+        if (publisherRef is null)
+        {
+            throw new PluginRegistrationException(
+                $"Solution '{solutionUniqueName}' has no publisher. " +
+                "Assign a publisher to the solution in Dataverse.");
+        }
+
+        Entity publisher = _service.Retrieve(
+            "publisher",
+            publisherRef.Id,
+            new ColumnSet("customizationprefix", "uniquename"));
+
+        string? prefix = publisher.GetAttributeValue<string>("customizationprefix");
+        if (string.IsNullOrWhiteSpace(prefix))
+        {
+            throw new PluginRegistrationException(
+                $"Publisher for solution '{solutionUniqueName}' has no customization prefix.");
+        }
+
+        return prefix;
+    }
 }

@@ -1,28 +1,27 @@
 name: Publish NuGet Packages
 
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Opcjonalna wersja (nadpisuje wersję z Directory.Build.props). Zostaw puste, aby użyć wersji z props.'
+        required: false
+        type: string
+      publish:
+        description: 'Opublikuj pakiety na nuget.org'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   ARTIFACTS_DIR: ./artifacts
-
-on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Nadpisanie wersji pakietu (puste = wersja z Directory.Build.props)'
-        required: false
-        type: string
-        default: ''
-      project:
-        description: 'Projekt do spakowania i wysłania na NuGet'
-        required: true
-        type: choice
-        options:
-          - all
-          - PluginRegistration.Attributes
-          - PluginRegistration.Core
-          - PluginRegistration.Tool
-        default: all
 
 jobs:
   build-and-publish:
@@ -30,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      id-token: write   # Wymagane dla NuGet Trusted Publishing (OIDC)
 
     steps:
       - name: Checkout repository
@@ -41,68 +40,38 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          global-json-file: global.json
-
-      - name: Resolve pack target
-        id: target
-        shell: bash
-        run: |
-          PROJECT="${{ inputs.project }}"
-          case "$PROJECT" in
-            all)
-              echo "pack_target=PluginRegistrationTool.slnx" >> $GITHUB_OUTPUT
-              ;;
-            PluginRegistration.Attributes)
-              echo "pack_target=src/PluginRegistration.Attributes/PluginRegistration.Attributes.csproj" >> $GITHUB_OUTPUT
-              ;;
-            PluginRegistration.Core)
-              echo "pack_target=src/PluginRegistration.Core/PluginRegistration.Core.csproj" >> $GITHUB_OUTPUT
-              ;;
-            PluginRegistration.Tool)
-              echo "pack_target=src/PluginRegistration.Tool/PluginRegistration.Tool.csproj" >> $GITHUB_OUTPUT
-              ;;
-            *)
-              echo "::error::Unknown project: $PROJECT"
-              exit 1
-              ;;
-          esac
-          echo "project=$PROJECT" >> $GITHUB_OUTPUT
-          echo "Pack target project: $PROJECT"
+          dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore PluginRegistrationTool.slnx
+        run: dotnet restore
 
       - name: Build (Release)
-        run: dotnet build PluginRegistrationTool.slnx --no-restore -c Release
+        run: dotnet build --no-restore -c Release
 
       - name: Run tests
-        run: dotnet test PluginRegistrationTool.slnx --no-build -c Release --logger "console;verbosity=minimal"
+        run: dotnet test --no-build -c Release --logger "console;verbosity=minimal"
 
       - name: Determine package version
         id: version
         shell: bash
         run: |
-          INPUT_VERSION="${{ inputs.version }}"
-          if [ -n "$INPUT_VERSION" ]; then
-            VER="$INPUT_VERSION"
-            echo "Using version override from workflow input: $VER"
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            echo "Version override from input: ${{ github.event.inputs.version }}"
           else
-            VER=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -1 || echo "")
-            echo "Using version from Directory.Build.props: $VER"
+            # Odczytaj wersję z Directory.Build.props
+            VER=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -1 || true)
+            echo "version=$VER" >> $GITHUB_OUTPUT
+            echo "Version from Directory.Build.props: $VER"
           fi
-          echo "version=$VER" >> $GITHUB_OUTPUT
 
       - name: Pack NuGet packages
         run: |
           PACK_VERSION="${{ steps.version.outputs.version }}"
-          PACK_TARGET="${{ steps.target.outputs.pack_target }}"
           if [ -n "$PACK_VERSION" ]; then
-            dotnet pack "$PACK_TARGET" --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} \
-              /p:Version="$PACK_VERSION" \
-              /p:ContinuousIntegrationBuild=true
+            dotnet pack --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:Version="$PACK_VERSION" /p:ContinuousIntegrationBuild=true
           else
-            dotnet pack "$PACK_TARGET" --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} \
-              /p:ContinuousIntegrationBuild=true
+            dotnet pack --no-build -c Release -o ${{ env.ARTIFACTS_DIR }} /p:ContinuousIntegrationBuild=true
           fi
 
       - name: List generated packages
@@ -115,26 +84,43 @@ jobs:
           path: ${{ env.ARTIFACTS_DIR }}/
           retention-days: 30
 
-      # ==================== TRUSTED PUBLISHING ====================
-      - name: NuGet login (Trusted Publishing)
-        uses: NuGet/login@v1
-        id: nuget-login
-        with:
-          user: psobczak
+      - name: Get OIDC token for NuGet Trusted Publishing
+        # Oficjalny sposób z dokumentacji NuGet (curl + OIDC JWT jako api-key)
+        # https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing
+        if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
+        id: nuget-oidc
+        run: |
+          TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api.nuget.org" | jq -r '.value' || echo "")
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
       - name: Publish to NuGet.org
+        if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
+        env:
+          # OIDC token z Trusted Publishing (musi pasować do polityki 'psobczak')
+          NUGET_API_KEY: ${{ steps.nuget-oidc.outputs.token || secrets.NUGET_API_KEY }}
         run: |
-          echo "Pushing packages to nuget.org..."
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "::warning::No OIDC token and no NUGET_API_KEY secret. Skipping publish."
+            exit 0
+          fi
+
+          echo "Pushing packages using OIDC token..."
           dotnet nuget push "${{ env.ARTIFACTS_DIR }}/*.nupkg" \
-            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
       - name: Publish summary
-        if: success()
+        if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-oidc.outputs.token || secrets.NUGET_API_KEY }}
         run: |
-          echo "✅ Pakiety NuGet zostały pomyślnie opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "⚠️ Publish skipped (no OIDC token / API key)" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          echo "✅ Pakiety NuGet zostały opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Projekt:** ${{ steps.target.outputs.project }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Wersja:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Data publikacji:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "### Opublikowane pakiety:" >> $GITHUB_STEP_SUMMARY
+          ls ${{ env.ARTIFACTS_DIR }}/*.nupkg 2>/dev/null | xargs -I {} basename {} | sed 's/^/- \`/' | sed 's/$/\`/' >> $GITHUB_STEP_SUMMARY || echo "- (brak plików)" >> $GITHUB_STEP_SUMMARY

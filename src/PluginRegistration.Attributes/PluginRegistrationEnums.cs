@@ -78,23 +78,8 @@
 
     public enum IsolationModeEnum
     {
-        /// <summary>
-        /// Full trust / no isolation. Not allowed in many Dataverse environments.
-        /// Dataverse value: 1
-        /// </summary>
-        None = 1,
-
-        /// <summary>
-        /// Sandboxed / isolated execution. Recommended default.
-        /// Dataverse value: 2
-        /// </summary>
-        Sandbox = 2,
-
-        /// <summary>
-        /// External (for plugin packages in some scenarios).
-        /// Dataverse value: 3
-        /// </summary>
-        External = 3
+        None = 0,
+        Sandbox = 1
     }
 
     public enum PluginStepOperationEnum

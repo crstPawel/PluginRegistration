@@ -2,7 +2,6 @@ using System;
 using Microsoft.Xrm.Sdk;
 using PluginRegistration.Core;
 using PluginRegistration.Core.Connection;
-using PluginRegistration.Core.Config;
 using PluginRegistration.Core.Deploy;
 using PluginRegistration.Core.EarlyBound;
 using PluginRegistration.Core.Sync;
@@ -11,7 +10,6 @@ using System.CommandLine;
 using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace PluginRegistration.Tool
@@ -24,7 +22,7 @@ namespace PluginRegistration.Tool
 
             var pathOption = new Option<DirectoryInfo>(
                 aliases: ["--path", "-p"],
-                description: "Working directory containing pluginregistration.json and plugin assemblies.")
+                description: "Working directory for plugin packages / source (default: current directory).")
             {
                 IsRequired = false
             };
@@ -33,20 +31,37 @@ namespace PluginRegistration.Tool
                 aliases: ["--connection", "-c"],
                 description: "Dataverse connection string. If omitted, DATAVERSE_* environment variables are used.");
 
+            var packagePathOption = new Option<string>(
+                aliases: ["--package-path"],
+                getDefaultValue: () => "bin/Release",
+                description: "Folder or pattern for plugin NuGet packages (*.nupkg), relative to --path.");
+
+            var solutionOption = new Option<string?>(
+                aliases: ["--solution", "-s"],
+                description: "Dataverse solution unique name (components + publisher prefix for package/Custom API names).");
+
             var excludeStepsOption = new Option<bool>(
                 aliases: ["--exclude-steps"],
-                description: "Upload assemblies only, skip plugin step registration.");
+                description: "Upload plugin packages only, skip plugin step and Custom API registration.");
 
             var classRegexOption = new Option<string?>(
                 aliases: ["--class-regex"],
                 description: "Custom regex for detecting plugin classes during sync.");
 
-            var deployCommand = new Command("deploy", "Deploy plugin assemblies and register steps.");
+            var deployCommand = new Command("deploy", "Deploy plugin NuGet packages and register steps/Custom APIs.");
             deployCommand.AddOption(pathOption);
+            deployCommand.AddOption(packagePathOption);
+            deployCommand.AddOption(solutionOption);
             deployCommand.AddOption(connectionOption);
             deployCommand.AddOption(excludeStepsOption);
             CommandValidators.AddDeployValidators(deployCommand, pathOption, connectionOption);
-            deployCommand.SetHandler(DeployAsync, pathOption, connectionOption, excludeStepsOption);
+            deployCommand.SetHandler(
+                DeployAsync,
+                pathOption,
+                packagePathOption,
+                solutionOption,
+                connectionOption,
+                excludeStepsOption);
 
             var syncCommand = new Command("sync", "Download plugin step metadata from Dataverse and update source code attributes.");
             syncCommand.AddOption(pathOption);
@@ -60,78 +75,52 @@ namespace PluginRegistration.Tool
             CommandValidators.AddWhoAmIValidators(whoamiCommand, connectionOption);
             whoamiCommand.SetHandler(WhoAmIAsync, connectionOption);
 
-            var assemblyPathOption = new Option<string>(
-                aliases: ["--assembly-path"],
-                getDefaultValue: () => "bin/Release",
-                description: "Assembly output path written into pluginregistration.json.");
-
-            var solutionOption = new Option<string?>(
-                aliases: ["--solution"],
-                description: "Solution unique name to add plugin components to.");
-
-            var forceOption = new Option<bool>(
-                aliases: ["--force"],
-                description: "Overwrite existing pluginregistration.json.");
-
-            var initCommand = new Command("init", "Generate pluginregistration.json from source code.");
-            initCommand.AddOption(pathOption);
-            initCommand.AddOption(assemblyPathOption);
-            initCommand.AddOption(solutionOption);
-            initCommand.AddOption(forceOption);
-            CommandValidators.AddInitValidators(initCommand, pathOption);
-            initCommand.SetHandler(InitAsync, pathOption, assemblyPathOption, solutionOption, forceOption);
-
             var earlyBoundConfigOption = new Option<string?>(
                 aliases: ["--config"],
-                description: "Path to earlyboundgenerator.xml or .json config (default depends on --json-config).");
-
-            var earlyBoundJsonConfigOption = new Option<bool>(
-                aliases: ["--json-config"],
-                description: "Use JSON config from earlybound.json in --path (or path from --config).");
+                description: "Path to DLaB EBG V2 earlyboundgenerator.xml (default: earlyboundgenerator.xml under --path).");
 
             var earlyBoundOutputOption = new Option<DirectoryInfo?>(
                 aliases: ["--output", "-o"],
-                description: "Output directory for generated early bound files (default: EarlyBound under --path).");
+                description: "Output directory for generated early bound files (overrides RootPath in XML; default: EarlyBound under --path).");
 
             var earlyBoundNamespaceOption = new Option<string?>(
                 aliases: ["--namespace", "-n"],
-                description: "C# namespace for generated types.");
+                description: "C# namespace for generated types (overrides Namespace in XML).");
 
             var earlyBoundServiceContextOption = new Option<string?>(
                 aliases: ["--service-context"],
-                description: "Name of the generated OrganizationServiceContext class.");
+                description: "Name of the generated OrganizationServiceContext class (overrides ServiceContextName in XML).");
 
             var earlyBoundEntitiesOption = new Option<string?>(
                 aliases: ["--entities", "-e"],
-                description: "Pipe-separated entity logical names to include (e.g. account|contact).");
+                description: "Pipe-separated entity logical names to include (overrides EntitiesWhitelist in XML, e.g. account|contact).");
 
             var earlyBoundSkipMessagesOption = new Option<bool>(
                 aliases: ["--skip-messages"],
-                description: "Skip generating SDK message / action types.");
+                description: "Skip generating SDK message / action types (overrides GenerateMessages in XML).");
 
             var earlyBoundGlobalOptionSetsOption = new Option<bool>(
                 aliases: ["--global-option-sets"],
-                description: "Generate global option sets.");
+                description: "Generate global option sets (overrides GenerateGlobalOptionSets in XML).");
 
             var earlyBoundInitConfigOption = new Option<bool>(
                 aliases: ["--init-config"],
-                description: "Create a default earlyboundgenerator.xml or earlybound.json and exit.");
+                description: "Create a default DLaB EBG V2 earlyboundgenerator.xml and exit.");
 
             var earlyBoundForceOption = new Option<bool>(
                 aliases: ["--force"],
-                description: "Overwrite existing config file when using --init-config.");
+                description: "Overwrite existing earlyboundgenerator.xml when using --init-config.");
 
             var earlyBoundOverwriteOption = new Option<bool>(
                 aliases: ["--overwrite"],
-                description: "Overwrite existing generated .cs files and config file (--init-config).");
+                description: "Overwrite existing generated .cs files; with --init-config also replaces the XML config.");
 
             var earlyBoundCommand = new Command(
                 "earlybound",
-                "Generate early-bound Dataverse entities, option sets, and actions using DLaB Early Bound Generator V2.");
+                "Generate early-bound Dataverse entities, option sets, and actions using DLaB Early Bound Generator V2 XML config.");
             earlyBoundCommand.AddOption(pathOption);
             earlyBoundCommand.AddOption(connectionOption);
             earlyBoundCommand.AddOption(earlyBoundConfigOption);
-            earlyBoundCommand.AddOption(earlyBoundJsonConfigOption);
             earlyBoundCommand.AddOption(earlyBoundOutputOption);
             earlyBoundCommand.AddOption(earlyBoundNamespaceOption);
             earlyBoundCommand.AddOption(earlyBoundServiceContextOption);
@@ -150,7 +139,6 @@ namespace PluginRegistration.Tool
                 context.ParseResult.GetValueForOption(pathOption),
                 context.ParseResult.GetValueForOption(connectionOption),
                 context.ParseResult.GetValueForOption(earlyBoundConfigOption),
-                context.ParseResult.GetValueForOption(earlyBoundJsonConfigOption),
                 context.ParseResult.GetValueForOption(earlyBoundOutputOption),
                 context.ParseResult.GetValueForOption(earlyBoundNamespaceOption),
                 context.ParseResult.GetValueForOption(earlyBoundServiceContextOption),
@@ -164,7 +152,6 @@ namespace PluginRegistration.Tool
             root.AddCommand(deployCommand);
             root.AddCommand(syncCommand);
             root.AddCommand(whoamiCommand);
-            root.AddCommand(initCommand);
             root.AddCommand(earlyBoundCommand);
 
             var commandLineBuilder = new CommandLineBuilder(root);
@@ -178,24 +165,23 @@ namespace PluginRegistration.Tool
 
             static IOrganizationService Connect(string? connection)
             {
-                // The factory now handles:
-                // - explicit connection string
-                // - DATAVERSE_ACCESS_TOKEN (for Workload Identity Federation)
-                // - AZURE_* / DATAVERSE_* secrets or certificates (from Azure DevOps Service Connections)
                 return DataverseConnectionFactory.Connect(connection);
             }
 
             static Task DeployAsync(
                 DirectoryInfo? path,
+                string packagePath,
+                string? solution,
                 string? connection,
                 bool excludeSteps)
             {
                 var trace = new ConsoleTrace();
                 var service = Connect(connection);
                 var deployService = new PluginDeployService(service, trace);
+                var workingDirectory = ResolvePath(path).FullName;
 
                 trace.WriteLine("Deploying plugins.");
-                deployService.Deploy(ResolvePath(path).FullName, excludeSteps);
+                deployService.Deploy(workingDirectory, packagePath, solution, excludeSteps);
                 trace.WriteLine("Deployment completed successfully.");
                 return Task.CompletedTask;
             }
@@ -208,19 +194,6 @@ namespace PluginRegistration.Tool
 
                 trace.WriteLine("Syncing plugin metadata into source code.");
                 syncService.SyncSourceCode(ResolvePath(path).FullName, classRegex);
-                return Task.CompletedTask;
-            }
-
-            static Task InitAsync(
-                DirectoryInfo? path,
-                string assemblyPath,
-                string? solution,
-                bool force)
-            {
-                var trace = new ConsoleTrace();
-                var workingDirectory = ResolvePath(path).FullName;
-                var scaffold = new ConfigScaffoldService(trace);
-                scaffold.Generate(workingDirectory, assemblyPath, solution, force);
                 return Task.CompletedTask;
             }
 
@@ -238,7 +211,6 @@ namespace PluginRegistration.Tool
                 DirectoryInfo? path,
                 string? connection,
                 string? config,
-                bool jsonConfig,
                 DirectoryInfo? output,
                 string? @namespace,
                 string? serviceContext,
@@ -255,7 +227,6 @@ namespace PluginRegistration.Tool
                 {
                     WorkingDirectory = workingDirectory,
                     ConfigFilePath = config,
-                    UseJsonConfig = jsonConfig,
                     OutputDirectory = output?.FullName,
                     Namespace = @namespace,
                     ServiceContextName = serviceContext,

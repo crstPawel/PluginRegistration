@@ -4,14 +4,16 @@ namespace PluginRegistration.Core.Sync;
 
 public static class PluginStepImageCodeGenerator
 {
-    public static string Generate(PluginStepImageModel image, string indentation)
+    public static string Generate(PluginStepImageModel image, string linePrefix)
     {
-        return string.Format(
-            "{0}[PluginStepImage(\"{1}\", ImageTypeEnum.{2}, {3}){0}]",
-            indentation,
-            Escape(image.Name),
-            image.ImageType,
-            FilteringAttributesParser.FormatForCode(image.Attributes ?? []));
+        var extras = string.Empty;
+        if (!string.IsNullOrWhiteSpace(image.Message))
+        {
+            extras += $", Message = \"{Escape(image.Message)}\"";
+        }
+
+        return
+            $"{linePrefix}[PluginStepImage(\"{Escape(image.Name)}\", ImageTypeEnum.{image.ImageType}, {FilteringAttributesParser.FormatForCode(image.Attributes ?? [])}{extras})]";
     }
 
     private static string Escape(string value) => value.Replace("\"", "\"\"");

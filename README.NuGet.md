@@ -9,7 +9,7 @@ Full documentation: [README.md](README.md) and [docs/](docs/).
 | Package | Purpose |
 |---------|---------|
 | `PluginRegistration.Attributes` | Attributes to decorate plugin classes |
-| `PluginRegistration.Tool` | CLI tool (`pluginreg`) for deploy/sync/init |
+| `PluginRegistration.Tool` | CLI tool (`pluginreg`) for deploy/sync |
 | `PluginRegistration.Core` | Core library (rarely used directly) |
 
 ## Installation
@@ -57,8 +57,8 @@ public class ProcessAccountCustomApiPlugin : IPlugin
 ### Deploy
 
 ```bash
-pluginreg init --path . --profiles dev,test,prod
-pluginreg deploy --path . --profile dev
+dotnet pack -c Release
+pluginreg deploy --path . --package-path bin/Release --solution MySolution
 ```
 
 More: [docs/getting-started.md](docs/getting-started.md), [docs/plugin-steps.md](docs/plugin-steps.md), [docs/custom-api.md](docs/custom-api.md).

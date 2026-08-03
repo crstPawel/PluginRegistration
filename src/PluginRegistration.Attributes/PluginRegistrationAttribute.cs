@@ -48,9 +48,7 @@ namespace PluginRegistration.Attributes
         
         
         public bool DeleteAsyncOperation { get; set; }
-        public string? UnSecureConfiguration { get; set; }
-        public string? SecureConfiguration { get; set; }
-        
+
         public bool Server { get; set; } = true;
         
         public PluginStepOperationEnum? Action { get; set; }

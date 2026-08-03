@@ -9,135 +9,127 @@ public static class CustomApiCodeGenerator
         CustomApiRegistration attribute,
         IEnumerable<CustomApiParameterModel> requestParameters,
         IEnumerable<CustomApiParameterModel> responseProperties,
-        string indentation)
+        string linePrefix)
     {
-        yield return GenerateMainAttribute(attribute, indentation);
+        yield return GenerateMainAttribute(attribute, linePrefix);
 
         foreach (var parameter in requestParameters)
         {
-            yield return GenerateRequestParameter(parameter, indentation);
+            yield return GenerateRequestParameter(parameter, linePrefix);
         }
 
         foreach (var property in responseProperties)
         {
-            yield return GenerateResponseProperty(property, indentation);
+            yield return GenerateResponseProperty(property, linePrefix);
         }
     }
 
-    private static string GenerateMainAttribute(CustomApiRegistration attribute, string indentation)
+    private static string GenerateMainAttribute(CustomApiRegistration attribute, string linePrefix)
     {
         var uniqueName = attribute.UniqueName;
-        var displayName = attribute.DisplayName ?? uniqueName;
-        var bindingType = attribute.CustomApiBindingType;
-        var processingStepType = attribute.ProcessingStepType;
-        var boundEntity = attribute.BoundEntityLogicalName ?? string.Empty;
-
-        string constructor;
-        if (bindingType != CustomApiBindingTypeEnum.Global
-            || processingStepType != CustomApiProcessingStepTypeEnum.None
-            || !string.IsNullOrWhiteSpace(boundEntity))
-        {
-            constructor =
-                $"\"{Escape(uniqueName)}\", \"{Escape(displayName)}\", CustomApiProcessingStepTypeEnum.{processingStepType}, CustomApiBindingTypeEnum.{bindingType}, \"{Escape(boundEntity)}\"";
-        }
-        else if (!string.Equals(displayName, uniqueName, StringComparison.Ordinal))
-        {
-            constructor = $"\"{Escape(uniqueName)}\", \"{Escape(displayName)}\"";
-        }
-        else
-        {
-            constructor = $"\"{Escape(uniqueName)}\"";
-        }
-
         var extras = string.Empty;
 
-        if (constructor.StartsWith($"\"{Escape(uniqueName)}\"", StringComparison.Ordinal)
-            && !string.Equals(displayName, uniqueName, StringComparison.Ordinal)
-            && !constructor.Contains("\", \"", StringComparison.Ordinal))
+        if (!string.IsNullOrWhiteSpace(attribute.DisplayName)
+            && !string.Equals(attribute.DisplayName, uniqueName, StringComparison.Ordinal))
         {
-            extras += $"{indentation},FriendlyName = \"{Escape(displayName)}\"";
+            extras += $", DisplayName = \"{Escape(attribute.DisplayName)}\"";
         }
 
         if (!string.IsNullOrWhiteSpace(attribute.Description))
         {
-            extras += $"{indentation},Description = \"{Escape(attribute.Description)}\"";
+            extras += $", Description = \"{Escape(attribute.Description)}\"";
+        }
+
+        if (attribute.CustomApiBindingType != CustomApiBindingTypeEnum.Global)
+        {
+            extras += $", CustomApiBindingType = CustomApiBindingTypeEnum.{attribute.CustomApiBindingType}";
+        }
+
+        if (attribute.ProcessingStepType != CustomApiProcessingStepTypeEnum.None)
+        {
+            extras += $", ProcessingStepType = CustomApiProcessingStepTypeEnum.{attribute.ProcessingStepType}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(attribute.BoundEntityLogicalName))
+        {
+            extras += $", BoundEntityLogicalName = \"{Escape(attribute.BoundEntityLogicalName)}\"";
         }
 
         if (attribute.IsFunction)
         {
-            extras += $"{indentation},IsFunction = true";
+            extras += ", IsFunction = true";
         }
 
         if (attribute.IsPrivate)
         {
-            extras += $"{indentation},IsPrivate = true";
+            extras += ", IsPrivate = true";
         }
 
         if (!string.IsNullOrWhiteSpace(attribute.ExecutePrivilegeName))
         {
-            extras += $"{indentation},ExecutePrivilegeName = \"{Escape(attribute.ExecutePrivilegeName)}\"";
+            extras += $", ExecutePrivilegeName = \"{Escape(attribute.ExecutePrivilegeName)}\"";
         }
 
-        return $"{indentation}[CustomApiRegistration({constructor}{extras}{indentation})]";
+        return $"{linePrefix}[CustomApiRegistration(\"{Escape(uniqueName)}\"{extras})]";
     }
 
-    private static string GenerateRequestParameter(CustomApiParameterModel parameter, string indentation)
+    private static string GenerateRequestParameter(CustomApiParameterModel parameter, string linePrefix)
     {
         var extras = string.Empty;
 
         if (!string.Equals(parameter.DisplayName, parameter.UniqueName, StringComparison.Ordinal))
         {
-            extras += $"{indentation},DisplayName = \"{Escape(parameter.DisplayName)}\"";
+            extras += $", DisplayName = \"{Escape(parameter.DisplayName)}\"";
         }
 
         if (!string.IsNullOrWhiteSpace(parameter.Description))
         {
-            extras += $"{indentation},Description = \"{Escape(parameter.Description)}\"";
+            extras += $", Description = \"{Escape(parameter.Description)}\"";
         }
 
         if (parameter.IsRequired)
         {
-            extras += $"{indentation},IsRequired = true";
+            extras += ", IsRequired = true";
         }
 
         if (!string.IsNullOrWhiteSpace(parameter.EntityLogicalName))
         {
-            extras += $"{indentation},EntityLogicalName = \"{Escape(parameter.EntityLogicalName)}\"";
+            extras += $", EntityLogicalName = \"{Escape(parameter.EntityLogicalName)}\"";
         }
 
         if (!string.IsNullOrWhiteSpace(parameter.ApiUniqueName))
         {
-            extras += $"{indentation},ApiUniqueName = \"{Escape(parameter.ApiUniqueName)}\"";
+            extras += $", ApiUniqueName = \"{Escape(parameter.ApiUniqueName)}\"";
         }
 
-        return $"{indentation}[CustomApiRequestParameter(\"{Escape(parameter.UniqueName)}\", CustomApiParameterTypeEnum.{parameter.Type}{extras}{indentation})]";
+        return $"{linePrefix}[CustomApiRequestParameter(\"{Escape(parameter.UniqueName)}\", CustomApiParameterTypeEnum.{parameter.Type}{extras})]";
     }
 
-    private static string GenerateResponseProperty(CustomApiParameterModel property, string indentation)
+    private static string GenerateResponseProperty(CustomApiParameterModel property, string linePrefix)
     {
         var extras = string.Empty;
 
         if (!string.Equals(property.DisplayName, property.UniqueName, StringComparison.Ordinal))
         {
-            extras += $"{indentation},DisplayName = \"{Escape(property.DisplayName)}\"";
+            extras += $", DisplayName = \"{Escape(property.DisplayName)}\"";
         }
 
         if (!string.IsNullOrWhiteSpace(property.Description))
         {
-            extras += $"{indentation},Description = \"{Escape(property.Description)}\"";
+            extras += $", Description = \"{Escape(property.Description)}\"";
         }
 
         if (!string.IsNullOrWhiteSpace(property.EntityLogicalName))
         {
-            extras += $"{indentation},EntityLogicalName = \"{Escape(property.EntityLogicalName)}\"";
+            extras += $", EntityLogicalName = \"{Escape(property.EntityLogicalName)}\"";
         }
 
         if (!string.IsNullOrWhiteSpace(property.ApiUniqueName))
         {
-            extras += $"{indentation},ApiUniqueName = \"{Escape(property.ApiUniqueName)}\"";
+            extras += $", ApiUniqueName = \"{Escape(property.ApiUniqueName)}\"";
         }
 
-        return $"{indentation}[CustomApiResponseProperty(\"{Escape(property.UniqueName)}\", CustomApiParameterTypeEnum.{property.Type}{extras}{indentation})]";
+        return $"{linePrefix}[CustomApiResponseProperty(\"{Escape(property.UniqueName)}\", CustomApiParameterTypeEnum.{property.Type}{extras})]";
     }
 
     private static string Escape(string value) => value.Replace("\"", "\"\"");

@@ -134,14 +134,15 @@ public sealed class MetadataSyncService
 
             attribute.Id = step.Id.ToString();
             attribute.DeleteAsyncOperation = step.GetAttributeValue<bool?>("asyncautodelete") ?? false;
-            attribute.UnSecureConfiguration = step.GetAttributeValue<string>("configuration");
 
             if (!string.Equals(stepName, defaultStepName, StringComparison.Ordinal))
             {
                 attribute.Name = stepName;
             }
 
-            var stepImages = ReadStepImages(step.Id);
+            // When a type has multiple steps, stamp Message on images so they re-attach correctly.
+            var includeMessage = steps.Count > 1;
+            var stepImages = ReadStepImages(step.Id, includeMessage ? messageName : null);
             parser.AddAttribute(attribute, className);
             parser.AddStepImageAttributes(stepImages, className);
         }
@@ -163,30 +164,20 @@ public sealed class MetadataSyncService
             var processingStepType = (CustomApiProcessingStepTypeEnum)(api.GetAttributeValue<OptionSetValue>("allowedcustomprocessingsteptype")?.Value ?? 0);
             var boundEntityLogicalName = api.GetAttributeValue<string>("boundentitylogicalname") ?? string.Empty;
 
-            CustomApiRegistration attribute;
-            if (bindingType != CustomApiBindingTypeEnum.Global
-                || processingStepType != CustomApiProcessingStepTypeEnum.None
-                || !string.IsNullOrWhiteSpace(boundEntityLogicalName))
+            var attribute = new CustomApiRegistration(uniqueName)
             {
-                attribute = new CustomApiRegistration(
-                    uniqueName,
-                    displayName,
-                    processingStepType,
-                    bindingType,
-                    boundEntityLogicalName);
-            }
-            else if (!string.Equals(displayName, uniqueName, StringComparison.Ordinal))
-            {
-                attribute = new CustomApiRegistration(uniqueName, displayName);
-            }
-            else
-            {
-                attribute = new CustomApiRegistration(uniqueName);
-            }
-
-            attribute.Description = api.GetAttributeValue<string>("description");
-            attribute.IsFunction = api.GetAttributeValue<bool>("isfunction");
-            attribute.IsPrivate = api.GetAttributeValue<bool>("isprivate");
+                DisplayName = string.Equals(displayName, uniqueName, StringComparison.Ordinal)
+                    ? null
+                    : displayName,
+                Description = api.GetAttributeValue<string>("description"),
+                CustomApiBindingType = bindingType,
+                ProcessingStepType = processingStepType,
+                BoundEntityLogicalName = string.IsNullOrWhiteSpace(boundEntityLogicalName)
+                    ? null
+                    : boundEntityLogicalName,
+                IsFunction = api.GetAttributeValue<bool>("isfunction"),
+                IsPrivate = api.GetAttributeValue<bool>("isprivate")
+            };
 
             var requestParameters = details.RequestParameters
                 .Select(parameter => new CustomApiParameterModel
@@ -217,7 +208,7 @@ public sealed class MetadataSyncService
         }
     }
 
-    private List<PluginStepImageModel> ReadStepImages(Guid stepId)
+    private List<PluginStepImageModel> ReadStepImages(Guid stepId, string? message)
     {
         return _queries.GetPluginStepImages(stepId)
             .Select(image => new PluginStepImageModel
@@ -225,7 +216,8 @@ public sealed class MetadataSyncService
                 Name = image.GetAttributeValue<string>("entityalias") ?? image.GetAttributeValue<string>("name") ?? string.Empty,
                 ImageType = (ImageTypeEnum)(image.GetAttributeValue<OptionSetValue>("imagetype")?.Value ?? 0),
                 Attributes = FilteringAttributesParser.SplitCommaSeparated(
-                    image.GetAttributeValue<string>("attributes"))
+                    image.GetAttributeValue<string>("attributes")),
+                Message = message
             })
             .ToList();
     }
