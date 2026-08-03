@@ -103,33 +103,37 @@ jobs:
 
       # OIDC JWT must be exchanged for a short-lived NuGet API key (NuGet/login).
       # Raw GitHub OIDC tokens are NOT valid --api-key values (→ 403).
-      # continue-on-error: allow classic secrets.NUGET_API_KEY fallback when
-      # Trusted Publishing is not configured or NUGET_USER is missing.
+      # continue-on-error: allow classic secrets.NUGET_API_KEY if OIDC policy is not ready.
+      # user is required by NuGet/login; empty secrets omit the input → "Input required".
+      # Username is public — default to package-owner profile; override via secret/var if needed.
       - name: NuGet login (OIDC → temp API key)
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
         uses: NuGet/login@v1
         id: nuget-login
         continue-on-error: true
         with:
-          # nuget.org profile username (NOT email) — set repo secret NUGET_USER
-          user: ${{ secrets.NUGET_USER }}
+          # nuget.org profile name (NOT email). Prefer secret/var; else package owner on nuget.org.
+          user: ${{ secrets.NUGET_USER || vars.NUGET_USER || 'crstPawel' }}
 
       - name: Publish to NuGet.org
         if: (github.event_name == 'release') || (github.event.inputs.publish == 'true')
         id: publish
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY || secrets.NUGET_API_KEY }}
+          LOGIN_OUTCOME: ${{ steps.nuget-login.outcome }}
         run: |
           if [ -z "$NUGET_API_KEY" ]; then
-            echo "::error::Brak klucza NuGet (OIDC login i secret NUGET_API_KEY)."
-            echo "Skonfiguruj Trusted Publishing + secret NUGET_USER, albo klasyczny NUGET_API_KEY."
+            echo "::error::Brak klucza NuGet (OIDC login outcome=$LOGIN_OUTCOME, brak secret NUGET_API_KEY)."
+            echo "1) nuget.org → Trusted Publishing: owner crstPawel, repo PluginRegistration, workflow publish-nuget.yml"
+            echo "2) Username w loginie: secret/var NUGET_USER lub domyślnie 'crstPawel' (profil nuget.org, nie email)"
+            echo "3) Albo dodaj klasyczny secret NUGET_API_KEY z uprawnieniem Push"
             exit 1
           fi
 
           if [ -n "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" ]; then
             echo "Pushing packages with Trusted Publishing (temp API key)..."
           else
-            echo "Pushing packages with classic NUGET_API_KEY secret..."
+            echo "Pushing packages with classic NUGET_API_KEY secret (OIDC login outcome=$LOGIN_OUTCOME)..."
           fi
 
           # Push only .nupkg; symbols (.snupkg) are associated during pack and uploaded with the package
@@ -142,16 +146,19 @@ jobs:
         if: always() && ((github.event_name == 'release') || (github.event.inputs.publish == 'true'))
         run: |
           OUTCOME="${{ steps.publish.outcome }}"
+          LOGIN="${{ steps.nuget-login.outcome }}"
           if [ "$OUTCOME" = "success" ]; then
             echo "✅ Pakiety NuGet zostały opublikowane na nuget.org" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "OIDC login: \`$LOGIN\`" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Opublikowane pakiety:" >> $GITHUB_STEP_SUMMARY
             ls ${{ env.ARTIFACTS_DIR }}/*.nupkg 2>/dev/null | xargs -I {} basename {} | sed 's/^/- \`/' | sed 's/$/\`/' >> $GITHUB_STEP_SUMMARY || echo "- (brak plików)" >> $GITHUB_STEP_SUMMARY
           elif [ "$OUTCOME" = "skipped" ]; then
             echo "⚠️ Publish pominięty" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Publish na nuget.org nie powiódł się (outcome: $OUTCOME)" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Publish na nuget.org nie powiódł się (publish: $OUTCOME, OIDC login: $LOGIN)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Sprawdź: Trusted Publishing (workflow \`publish-nuget.yml\`, owner/repo), secret \`NUGET_USER\`, opcjonalnie \`NUGET_API_KEY\`." >> $GITHUB_STEP_SUMMARY
+            echo "Sprawdź: Trusted Publishing (workflow \`publish-nuget.yml\`, owner/repo), username nuget.org (\`crstPawel\` / \`NUGET_USER\`), opcjonalnie \`NUGET_API_KEY\`." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi

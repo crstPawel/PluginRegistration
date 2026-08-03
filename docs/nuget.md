@@ -76,12 +76,14 @@ Policy owner must match the owner of:
 
 A new policy may stay *pending / temporary* for up to 7 days until the first successful publish activates it permanently.
 
-**2. GitHub repo secrets**
+**2. GitHub secrets / variables** (optional overrides)
 
-| Secret | Required | Value |
-|--------|----------|--------|
-| `NUGET_USER` | Yes (for Trusted Publishing) | nuget.org **profile username** (not email) |
-| `NUGET_API_KEY` | Optional fallback | Classic API key with Push to the packages above |
+| Name | Required | Value |
+|------|----------|--------|
+| `NUGET_USER` (secret or repo variable) | No | nuget.org **profile username** (not email). Workflow default: `crstPawel` |
+| `NUGET_API_KEY` (secret) | Optional fallback | Classic API key with Push to the packages above |
+
+Empty `NUGET_USER` secret used to break `NuGet/login` with *Input required and not supplied: user* — username is public, so the workflow falls back to `crstPawel`.
 
 **3. Workflow permissions** (already set in YAML): `id-token: write`, `contents: read`.
 
